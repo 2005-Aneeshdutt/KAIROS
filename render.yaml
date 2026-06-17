@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: kairos-api
+    runtime: python
+    rootDir: api
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.6"
+
+  - type: web
+    name: kairos-web
+    runtime: node
+    rootDir: web
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: API_URL
+        fromService:
+          type: web
+          name: kairos-api
+          property: host
