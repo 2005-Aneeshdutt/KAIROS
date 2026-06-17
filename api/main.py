@@ -212,13 +212,19 @@ class TrackReq(BaseModel):
 @app.post("/track")
 def track(req: TrackReq):
     """Record a single behavioural event; return the stored event, live profile,
-    next-best-action, and the with/without mail simulation."""
+    next-best-action, the with/without mail simulation, plus the live intelligence:
+    detected behavioural patterns, a dynamic causal bundle, two-world economics, and
+    the shopper's targeted-message inbox."""
     v = trk.STORE.track(req.uid, req.model_dump())
     return {
         "stored_event": v.events[-1],
         "profile": trk.profile(v),
         "next_best_action": trk.next_best_action(v, req.device),
         "mail": trk.mail_simulation(v, req.device),
+        "patterns": trk.detect_patterns(v),
+        "bundle": trk.detect_bundle(v),
+        "economics": trk.session_economics(v),
+        "inbox": v.inbox[::-1],          # email only gets delivered on /session/end
     }
 
 
@@ -227,7 +233,67 @@ def visitor(uid: str):
     v = trk.STORE.visitor(uid)
     dev = v.devices[-1] if v.devices else "desktop"
     return {"profile": trk.profile(v), "next_best_action": trk.next_best_action(v, dev),
-            "mail": trk.mail_simulation(v, dev), "recent": v.events[-25:][::-1]}
+            "mail": trk.mail_simulation(v, dev), "recent": v.events[-25:][::-1],
+            "patterns": trk.detect_patterns(v), "bundle": trk.detect_bundle(v),
+            "economics": trk.session_economics(v), "inbox": v.inbox[::-1],
+            "ended": v.ended,
+            "cart": [trk.enrich(trk.PRODUCT_BY_ID[c]) for c in v.cart if c in trk.PRODUCT_BY_ID],
+            "orders": v.orders[::-1]}
+
+
+class SessionEndReq(BaseModel):
+    uid: str
+    device: str = "desktop"
+
+
+@app.post("/session/end")
+def session_end(req: SessionEndReq):
+    """The shopper left the site — now (and only now) marketing makes sense. Delivers
+    the one off-site message worth sending to their inbox, or stays silent."""
+    return trk.STORE.end_session(req.uid, req.device)
+
+
+class PurchaseReq(BaseModel):
+    uid: str
+    applied_points: int = 0
+
+
+@app.post("/purchase")
+def purchase(req: PurchaseReq):
+    """Check out the visitor's cart into a real order, moving live revenue."""
+    res = trk.STORE.purchase(req.uid, req.applied_points)
+    if not res.get("ok"):
+        raise HTTPException(400, res.get("error", "checkout failed"))
+    return res
+
+
+@app.get("/analytics/live")
+def analytics_live():
+    """Real-time, customer-based analytics across everyone in the store: funnel, live
+    bucket mix, top products, and revenue (updates as shoppers browse and buy)."""
+    return trk.cohort_analytics()
+
+
+@app.get("/strategy")
+def strategy():
+    """Data-backed marketing strategy: funnel, per-segment playbook, channel strategy,
+    and prioritised recommendations — computed live from the current cohort."""
+    return trk.strategy_report()
+
+
+@app.get("/benchmark")
+def benchmark(n: int = Query(5000, ge=200, le=64000), seed: int = 42):
+    """Reproducible head-to-head: Traditional vs Conductor over n customers, same
+    population and response model. Proves the superiority with seeded, testable numbers."""
+    return sim.benchmark(n=n, seed=seed)
+
+
+@app.get("/inbox/{uid}")
+def inbox(uid: str, device: str = "desktop"):
+    """The shopper's targeted-message inbox — the emails/pushes Conductor delivered
+    after sessions ended (we never market while they're actively on-site)."""
+    v = trk.STORE.visitor(uid)
+    return {"inbox": v.inbox[::-1]}
 
 
 @app.get("/visitor/{uid}/suggestion")

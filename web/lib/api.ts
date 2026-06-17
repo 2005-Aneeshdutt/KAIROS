@@ -113,6 +113,32 @@ export const store = {
     get<any>(`/visitor/${uid}/suggestion?device=${device}`, null),
   redeem: (uid: string, reward_id: string) => post<any>("/redeem", { uid, reward_id }, null),
   visitor: (uid: string) => get<any>(`/visitor/${uid}`, null),
+  purchase: (uid: string, applied_points = 0) =>
+    post<any>("/purchase", { uid, applied_points }, null),
+  inbox: (uid: string, device = "desktop") =>
+    get<any>(`/inbox/${uid}?device=${device}`, { inbox: [] }),
+  sessionEnd: (uid: string, device = "desktop") =>
+    post<any>("/session/end", { uid, device }, null),
+  analytics: () => get<any>("/analytics/live", null),
+  strategy: () => get<any>("/strategy", null),
+  benchmark: (n = 5000, seed = 42) => get<any>(`/benchmark?n=${n}&seed=${seed}`, null),
+};
+
+export type Pattern = { code: string; label: string; detail: string; intent: "up" | "down"; icon: string };
+export type Bundle2 = {
+  name: string; segment: string; discount_pct: number; kind: string;
+  products: { id: string; name: string; emoji: string; price: number }[];
+  total: number; price: number; saves: number; rationale: string;
+};
+export type InboxMail = {
+  channel: string; channel_icon: string; subject: string; preview: string; body: string;
+  cta: string; link: string; product: Product | null; reward_type?: string;
+  offer_pct?: number; reason?: string; from: string; ts: number; read: boolean;
+};
+export type Order = {
+  order_id: string; units: number; sale_total: number; incentive: number;
+  points_used: number; points_value: number; grand_total: number; points_earned: number;
+  segment: string; items: { id: string; name: string; emoji: string; price: number }[];
 };
 
 export function getUid(): string {

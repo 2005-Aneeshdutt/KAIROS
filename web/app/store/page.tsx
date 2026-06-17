@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   store, getUid, Product, ProductDetail, Review, Bundle, Coupon, Redemption, Promotions,
+  Bundle2, InboxMail, Order,
 } from "@/lib/api";
 
 type Loyalty = {
@@ -49,6 +50,14 @@ export default function StorePage() {
   const [phoneSug, setPhoneSug] = useState<any>(null);
   const [resolving, setResolving] = useState(false);
   const [toast, setToast] = useState<{ id: number; msg: string } | null>(null);
+  const [bundle, setBundle] = useState<Bundle2 | null>(null);
+  const [inbox, setInbox] = useState<InboxMail[]>([]);
+  const [inboxOpen, setInboxOpen] = useState(false);
+  const [seenInbox, setSeenInbox] = useState(0);
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [order, setOrder] = useState<Order | null>(null);
+  const [activeDevice, setActiveDevice] = useState<"desktop" | "mobile">("desktop");
+  const [ended, setEnded] = useState(false);
   const lastView = useRef<Record<string, number>>({});
 
   useEffect(() => {
@@ -57,21 +66,93 @@ export default function StorePage() {
     store.promotions().then(setPromos);
   }, []);
 
-  async function send(type: string, product?: Product, dwell_ms = 0) {
-    if (!uid) return;
-    const res = await store.track({ uid, type, product_id: product?.id, device: "desktop", dwell_ms });
-    if (res?.profile) {
-      setProfile(res.profile);
-      if (res.stored_event?.points_earned > 0) setToast({ id: Date.now(), msg: `+${res.stored_event.points_earned} loyalty points ✨` });
+  // Deep-link: /store?p=<id> (used by the targeted-email CTAs) opens the product so
+  // the shopper lands exactly where the message pointed, before intent decays.
+  useEffect(() => {
+    if (!uid || !products.length) return;
+    const pid = new URLSearchParams(window.location.search).get("p");
+    if (pid) {
+      const p = products.find((x) => x.id === pid);
+      if (p) openDetail(p);
+      window.history.replaceState({}, "", "/store");
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uid, products]);
+
+  function absorb(res: any) {
+    if (!res) return;
+    if (res.profile) setProfile(res.profile);
+    if ("bundle" in res) setBundle(res.bundle);
+    if (res.inbox) setInbox(res.inbox);
+    if (res.stored_event?.points_earned > 0)
+      setToast({ id: Date.now(), msg: `+${res.stored_event.points_earned} loyalty points ✨` });
   }
 
-  async function openDetail(p: Product) {
+  async function send(type: string, product?: Product, dwell_ms = 0, device: "desktop" | "mobile" = activeDevice) {
+    if (!uid) return;
+    if (ended) setEnded(false);            // activity restarts the session
+    absorb(await store.track({ uid, type, product_id: product?.id, device, dwell_ms }));
+  }
+
+  async function openDetail(p: Product, device: "desktop" | "mobile" = "desktop") {
+    setActiveDevice(device);
     const now = Date.now();
     const dwell = lastView.current[p.id] ? now - lastView.current[p.id] : 3500;
     lastView.current[p.id] = now;
-    send("view_product", p, Math.min(dwell, 12000));
+    send("view_product", p, Math.min(dwell, 12000), device);
     setDetail(await store.product(p.id));
+  }
+
+  async function endSession() {
+    const res = await store.sessionEnd(uid, activeDevice);
+    setEnded(true);
+    if (res?.inbox) setInbox(res.inbox);
+    if (res?.delivered) {
+      setToast({ id: Date.now(), msg: "📧 You left — Conductor sent 1 targeted message" });
+    } else {
+      setToast({ id: Date.now(), msg: "👋 Session ended — Conductor stayed silent (no spend warranted)" });
+    }
+  }
+
+  function openCheckout() {
+    send("checkout_start");
+    setCheckoutOpen(true);
+  }
+
+  async function placeOrder(applyPoints: boolean) {
+    const pts = applyPoints ? (profile?.loyalty?.points ?? 0) : 0;
+    const res = await store.purchase(uid, pts);
+    if (res?.ok) {
+      setOrder(res.order);
+      setCheckoutOpen(false);
+      const v = await store.visitor(uid);
+      absorb(v);
+      setToast({ id: Date.now(), msg: `Order placed · +${res.order.points_earned} pts 🎉` });
+    } else {
+      setToast({ id: Date.now(), msg: res?.error ?? "Checkout failed" });
+    }
+  }
+
+  async function addBundleToCart() {
+    if (!bundle) return;
+    for (const bp of bundle.products) {
+      const p = products.find((x) => x.id === bp.id);
+      if (p && !(profile?.cart ?? []).some((c) => c.id === p.id)) await send("add_to_cart", p);
+    }
+    setToast({ id: Date.now(), msg: `Bundle added · saved $${bundle.saves} 🎁` });
+  }
+
+  async function openInbox() {
+    const r = await store.inbox(uid);
+    if (r?.inbox) setInbox(r.inbox);
+    setInboxOpen(true);
+    setSeenInbox(r?.inbox?.length ?? inbox.length);
+  }
+
+  function openFromMail(m: InboxMail) {
+    setInboxOpen(false);
+    const p = m.product && products.find((x) => x.id === m.product!.id);
+    if (p) openDetail(p);
   }
 
   const wishIds = new Set((profile?.wishlist ?? []).map((w) => w.id));
@@ -121,8 +202,9 @@ export default function StorePage() {
           </div>
           <div className="flex items-center gap-4 text-sm">
             {profile?.loyalty && <button onClick={() => setRewardsOpen(true)}><RewardsWidget l={profile.loyalty} /></button>}
+            <button title="inbox" onClick={openInbox} className="relative hover:scale-110 transition">📧{inbox.length - seenInbox > 0 ? <Badge n={inbox.length - seenInbox} /> : null}</button>
             <span title="wishlist" className="relative">♡{profile?.wishlist?.length ? <Badge n={profile.wishlist.length} /> : null}</span>
-            <span title="cart" className="relative">🛒{profile?.cart?.length ? <Badge n={profile.cart.length} /> : null}</span>
+            <button title="cart" onClick={() => profile?.cart?.length && openCheckout()} className="relative hover:scale-110 transition">🛒{profile?.cart?.length ? <Badge n={profile.cart.length} /> : null}</button>
             <Link href="/console" target="_blank" className="text-white text-xs px-2.5 py-1 rounded-md" style={{ background: "#0d1320" }}>● Conductor console</Link>
           </div>
         </div>
@@ -207,13 +289,43 @@ export default function StorePage() {
           </div>
         )}
 
+        {/* dynamic, causally-priced bundle — Conductor assembled this live */}
+        {bundle && (
+          <div className="mb-5 rounded-2xl p-4 border-2 border-dashed" style={{ borderColor: BRAND + "66", background: "linear-gradient(110deg,#fff,#fff5f6)" }}>
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <div>
+                <div className="text-sm font-bold flex items-center gap-2">
+                  🎁 Conductor assembled a bundle for you
+                  <span className="text-[10px] font-semibold text-white px-2 py-0.5 rounded-full" style={{ background: BRAND }}>{bundle.discount_pct}% OFF</span>
+                </div>
+                <div className="flex items-center gap-2 mt-2">
+                  {bundle.products.map((p) => (
+                    <div key={p.id} className="w-11 h-11 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-xl">{p.emoji}</div>
+                  ))}
+                  <div className="ml-2 text-sm">
+                    <span className="font-extrabold" style={{ color: BRAND }}>${bundle.price}</span>{" "}
+                    <span className="text-xs text-slate-400 line-through">${bundle.total}</span>{" "}
+                    <span className="text-xs font-bold text-emerald-600">save ${bundle.saves}</span>
+                  </div>
+                </div>
+                <div className="text-[11px] text-slate-500 mt-1.5 max-w-xl">🧠 {bundle.rationale}</div>
+              </div>
+              <button onClick={addBundleToCart} className="text-sm font-semibold text-white px-4 py-2.5 rounded-lg shadow-sm hover:opacity-90" style={{ background: BRAND }}>Add bundle to cart →</button>
+            </div>
+          </div>
+        )}
+
         {/* product grid */}
         <div className="flex items-center justify-between mb-3">
           <div>
             <h2 className="text-lg font-bold">{activeCat === "All" ? "Trending now" : activeCat}</h2>
             <p className="text-xs text-slate-500">{shown.length} items · click to view details & reviews</p>
           </div>
-          <button onClick={continueOnPhone} className="text-sm font-semibold text-white px-3.5 py-2 rounded-lg shadow-sm hover:opacity-90" style={{ background: BRAND }}>Continue on phone 📱</button>
+          <div className="flex gap-2">
+            <button onClick={continueOnPhone} className="text-sm font-semibold text-white px-3.5 py-2 rounded-lg shadow-sm hover:opacity-90" style={{ background: BRAND }}>Continue on phone 📱</button>
+            <button onClick={endSession} title="Leave the site — marketing only makes sense once you've left"
+              className="text-sm font-semibold px-3.5 py-2 rounded-lg border border-slate-300 hover:bg-slate-50">Leave site 🚪</button>
+          </div>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
           {shown.map((p) => (
@@ -224,16 +336,23 @@ export default function StorePage() {
         {profile?.cart?.length ? (
           <div className="mt-4 flex items-center justify-between bg-white border border-slate-200 rounded-xl px-4 py-2.5">
             <span className="text-sm text-slate-600">Cart: {profile.cart.map((c) => c.emoji).join(" ")}</span>
-            <button onClick={() => send("checkout")} className="text-sm font-semibold text-white px-3 py-1.5 rounded-lg" style={{ background: "#16a34a" }}>
+            <button onClick={openCheckout} className="text-sm font-semibold text-white px-3 py-1.5 rounded-lg" style={{ background: "#16a34a" }}>
               Checkout ${profile.cart.reduce((s, c) => s + (c.sale_price ?? c.price), 0).toFixed(2)}
             </button>
           </div>
         ) : null}
       </div>
 
-      {detail && <ProductModal d={detail} wished={wishIds.has(detail.id)} onClose={() => setDetail(null)} onAdd={() => send("add_to_cart", detail)} onWish={() => toggleWish(detail)} onReadReviews={() => send("view_reviews", detail)} />}
+      {detail && <ProductModal d={detail} wished={wishIds.has(detail.id)} onClose={() => setDetail(null)} onAdd={() => send("add_to_cart", detail)} onWish={() => toggleWish(detail)} onReadReviews={() => send("view_reviews", detail)} onViewAllReviews={() => send("view_all_reviews", detail)} onSizeGuide={() => send("view_size_guide", detail)} />}
       {rewardsOpen && profile?.loyalty && <RewardsModal l={profile.loyalty} redemptions={promos.redemptions} onClose={() => setRewardsOpen(false)} onRedeem={redeem} />}
-      {phoneOn && <PhoneOverlay onClose={() => setPhoneOn(false)} resolving={resolving} sug={phoneSug} />}
+      {checkoutOpen && profile && <CheckoutModal cart={profile.cart} loyalty={profile.loyalty} onClose={() => setCheckoutOpen(false)} onRemove={(p) => send("remove_from_cart", p)} onPlace={placeOrder} />}
+      {order && <OrderConfirmation order={order} onClose={() => setOrder(null)} />}
+      {inboxOpen && <InboxModal mails={inbox} onClose={() => setInboxOpen(false)} onOpenProduct={openFromMail} />}
+      {phoneOn && <PhoneStore onClose={() => setPhoneOn(false)} resolving={resolving} sug={phoneSug}
+        products={products} cats={cats} profile={profile} wishIds={wishIds}
+        phoneSend={(type: string, p?: Product) => send(type, p, 0, "mobile")}
+        onCheckout={() => { setActiveDevice("mobile"); openCheckout(); }}
+        onEndSession={() => { setActiveDevice("mobile"); endSession(); }} />}
       {toast && <Toast key={toast.id} msg={toast.msg} onDone={() => setToast(null)} />}
     </main>
   );
@@ -287,11 +406,15 @@ function ProductCard({ p, wished, onOpen, onWish, onAdd }: { p: Product; wished:
   );
 }
 
-function ProductModal({ d, wished, onClose, onAdd, onWish, onReadReviews }: { d: ProductDetail; wished: boolean; onClose: () => void; onAdd: () => void; onWish: () => void; onReadReviews: () => void; }) {
+function ProductModal({ d, wished, onClose, onAdd, onWish, onReadReviews, onViewAllReviews, onSizeGuide }: { d: ProductDetail; wished: boolean; onClose: () => void; onAdd: () => void; onWish: () => void; onReadReviews: () => void; onViewAllReviews: () => void; onSizeGuide: () => void; }) {
   const [added, setAdded] = useState(false);
+  const [showAll, setShowAll] = useState(false);
   const reviewsRef = useRef<HTMLDivElement>(null);
   const total = Object.values(d.rating_breakdown).reduce((a, b) => a + b, 0) || 1;
   const onSale = d.discount_pct && d.discount_pct > 0;
+  // Only the top reviews show by default; expanding is itself a strong intent signal.
+  const topReviews = d.reviews.slice(0, 2);
+  const shownReviews = showAll ? d.reviews : topReviews;
   return (
     <div className="fixed inset-0 z-40 bg-black/50 flex items-start justify-center overflow-auto py-8" onClick={onClose}>
       <div onClick={(e) => e.stopPropagation()} className="bg-white rounded-2xl w-[min(880px,94vw)] shadow-2xl overflow-hidden">
@@ -313,6 +436,10 @@ function ProductModal({ d, wished, onClose, onAdd, onWish, onReadReviews }: { d:
             </div>
             {typeof d.stock === "number" && d.stock < 20 && <div className="text-xs text-rose-600 mt-1">Only {d.stock} left — order soon</div>}
             <p className="text-sm text-slate-600 mt-3 leading-relaxed">{d.description}</p>
+            <div className="flex gap-3 mt-3 text-xs">
+              <button onClick={onSizeGuide} className="text-slate-600 hover:text-slate-900 underline decoration-dotted">📏 Size guide</button>
+              <button onClick={onReadReviews} className="text-slate-600 hover:text-slate-900 underline decoration-dotted">💬 What buyers say</button>
+            </div>
             <div className="flex gap-2 mt-5">
               <button onClick={() => { onAdd(); setAdded(true); setTimeout(() => setAdded(false), 1200); }} className="flex-1 text-white font-semibold rounded-lg py-2.5 hover:opacity-90" style={{ background: BRAND }}>{added ? "Added ✓" : "Add to cart"}</button>
               <button onClick={onWish} className="px-4 rounded-lg border border-slate-300 hover:bg-slate-50" style={{ color: wished ? BRAND : "#475569" }}>{wished ? "♥" : "♡"}</button>
@@ -334,7 +461,15 @@ function ProductModal({ d, wished, onClose, onAdd, onWish, onReadReviews }: { d:
                 </div>
               ))}
             </div>
-            <div className="space-y-4">{d.reviews.map((r, i) => <ReviewItem key={i} r={r} />)}</div>
+            <div className="space-y-4">
+              {shownReviews.map((r, i) => <ReviewItem key={i} r={r} />)}
+              {!showAll && d.reviews.length > topReviews.length && (
+                <button onClick={() => { setShowAll(true); onViewAllReviews(); }}
+                  className="text-sm font-semibold w-full border border-slate-300 rounded-lg py-2 hover:bg-slate-50" style={{ color: BRAND }}>
+                  View all {d.reviews_count ?? d.reviews.length} reviews ↓
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -410,32 +545,250 @@ function RewardsModal({ l, redemptions, onClose, onRedeem }: { l: Loyalty; redem
   );
 }
 
-function PhoneOverlay({ onClose, resolving, sug }: { onClose: () => void; resolving: boolean; sug: any }) {
-  const nba = sug?.next_best_action;
+function CheckoutModal({ cart, loyalty, onClose, onRemove, onPlace }: { cart: Product[]; loyalty: Loyalty; onClose: () => void; onRemove: (p: Product) => void; onPlace: (applyPoints: boolean) => void; }) {
+  const [applyPoints, setApplyPoints] = useState(false);
+  const [placing, setPlacing] = useState(false);
+  const subtotal = cart.reduce((s, c) => s + (c.sale_price ?? c.price), 0);
+  const listTotal = cart.reduce((s, c) => s + (c.list_price ?? c.price), 0);
+  const saved = listTotal - subtotal;
+  const ptsValue = applyPoints ? Math.min(loyalty.dollar_value, subtotal) : 0;
+  const total = Math.max(0, subtotal - ptsValue);
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center" onClick={onClose}>
-      <div onClick={(e) => e.stopPropagation()} className="w-[320px] h-[640px] rounded-[2.6rem] border-[11px] border-[#0d1320] bg-[#0d1320] shadow-2xl overflow-hidden relative">
-        <div className="h-7 bg-[#0d1320] flex items-center justify-center"><div className="w-24 h-4 bg-black rounded-full" /></div>
-        {resolving ? (
-          <div className="flex flex-col items-center justify-center h-full text-slate-300"><div className="animate-pulse text-lg">🔗 Resolving identity…</div><div className="text-xs text-slate-500 mt-2">matching this device to a known shopper</div></div>
-        ) : (
-          <div className="p-4 space-y-3 bg-[#f3f4f6] h-full text-slate-900">
-            {sug?.identity_resolved && <div className="text-[11px] text-emerald-700 bg-emerald-100 border border-emerald-200 rounded-lg px-2 py-1">✓ Same shopper recognized · {sug.devices?.join(" → ")}</div>}
-            <div className="text-sm font-extrabold" style={{ color: BRAND }}>VERVE</div>
-            {nba?.recommend ? (
-              <div className="bg-white border rounded-2xl p-4 shadow-sm" style={{ borderColor: BRAND + "55" }}>
-                {nba.product && <div className="text-5xl mb-2">{nba.product.emoji}</div>}
-                <div className="text-base font-bold leading-snug">{nba.headline}</div>
-                <div className="text-sm text-slate-600 mt-1.5">{nba.message}</div>
-                {nba.offer_pct && <button className="mt-3 w-full text-white font-semibold rounded-xl py-2 text-sm" style={{ background: BRAND }}>Claim {nba.offer_pct}% off →</button>}
-                <div className="text-[10px] text-slate-400 mt-2">delivered via {nba.channel} · the right moment</div>
+    <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4" onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} className="bg-white rounded-2xl w-[min(560px,95vw)] shadow-2xl overflow-hidden">
+        <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
+          <div className="font-bold text-lg">Your bag · {cart.length} item{cart.length === 1 ? "" : "s"}</div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-lg">✕</button>
+        </div>
+        <div className="p-5 max-h-[44vh] overflow-auto space-y-2">
+          {cart.length === 0 ? <div className="text-sm text-slate-500 py-6 text-center">Your bag is empty.</div> :
+            cart.map((c) => (
+              <div key={c.id} className="flex items-center gap-3 border border-slate-100 rounded-xl p-2">
+                <div className={`w-11 h-11 rounded-lg flex items-center justify-center text-xl ${CAT_THEME[c.cat] ?? "bg-slate-100"}`}>{c.emoji}</div>
+                <div className="flex-1"><div className="text-sm font-semibold leading-tight">{c.name}</div><div className="text-xs text-slate-400">{c.cat}</div></div>
+                <div className="text-sm font-bold">${(c.sale_price ?? c.price).toFixed(2)}</div>
+                <button onClick={() => onRemove(c)} className="text-slate-300 hover:text-rose-500 text-sm">✕</button>
               </div>
-            ) : (
-              <div className="bg-white border border-slate-200 rounded-2xl p-4"><div className="text-base font-bold">{nba?.headline}</div><div className="text-sm text-slate-600 mt-1.5">{nba?.message}</div><div className="text-[10px] text-slate-400 mt-2">Conductor chose restraint — no spend here.</div></div>
-            )}
-            <button onClick={onClose} className="text-xs text-slate-400 w-full mt-2">close</button>
+            ))}
+        </div>
+        <div className="px-5 pb-5 space-y-1.5">
+          <div className="flex justify-between text-sm text-slate-500"><span>Subtotal</span><span>${listTotal.toFixed(2)}</span></div>
+          {saved > 0 && <div className="flex justify-between text-sm text-emerald-600"><span>Offers applied</span><span>−${saved.toFixed(2)}</span></div>}
+          {loyalty.points >= 25 && (
+            <label className="flex justify-between text-sm text-slate-700 cursor-pointer items-center">
+              <span className="flex items-center gap-2"><input type="checkbox" checked={applyPoints} onChange={(e) => setApplyPoints(e.target.checked)} />Use {loyalty.points} points (${loyalty.dollar_value})</span>
+              {ptsValue > 0 && <span className="text-emerald-600">−${ptsValue.toFixed(2)}</span>}
+            </label>
+          )}
+          <div className="flex justify-between font-extrabold text-lg pt-1 border-t border-slate-200 mt-1"><span>Total</span><span style={{ color: BRAND }}>${total.toFixed(2)}</span></div>
+          <button disabled={!cart.length || placing} onClick={() => { setPlacing(true); onPlace(applyPoints); }}
+            className="w-full text-white font-semibold rounded-lg py-3 mt-2 hover:opacity-90 disabled:opacity-50" style={{ background: "#16a34a" }}>
+            {placing ? "Processing payment…" : `Pay $${total.toFixed(2)} →`}
+          </button>
+          <div className="text-[11px] text-slate-400 text-center mt-1">🔒 Secure checkout · simulated payment for the demo</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function OrderConfirmation({ order, onClose }: { order: Order; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4" onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} className="bg-white rounded-2xl w-[min(520px,95vw)] shadow-2xl overflow-hidden">
+        <div className="p-6 text-white text-center" style={{ background: `linear-gradient(110deg, #16a34a, #4ade80)` }}>
+          <div className="text-5xl mb-1">🎉</div>
+          <div className="text-2xl font-extrabold">Order confirmed</div>
+          <div className="text-sm opacity-90">#{order.order_id} · {order.segment}</div>
+        </div>
+        <div className="p-5">
+          <div className="space-y-2 mb-3">
+            {order.items.map((i) => (
+              <div key={i.id} className="flex items-center gap-3">
+                <span className="text-xl">{i.emoji}</span>
+                <span className="flex-1 text-sm font-semibold">{i.name}</span>
+                <span className="text-sm">${i.price.toFixed(2)}</span>
+              </div>
+            ))}
+          </div>
+          <div className="border-t border-slate-200 pt-3 space-y-1 text-sm">
+            <div className="flex justify-between text-slate-500"><span>Items ({order.units})</span><span>${order.sale_total.toFixed(2)}</span></div>
+            {order.incentive > 0 && <div className="flex justify-between text-emerald-600"><span>You saved</span><span>−${order.incentive.toFixed(2)}</span></div>}
+            {order.points_used > 0 && <div className="flex justify-between text-emerald-600"><span>Points redeemed</span><span>−${order.points_value.toFixed(2)}</span></div>}
+            <div className="flex justify-between font-extrabold text-lg"><span>Paid</span><span style={{ color: BRAND }}>${order.grand_total.toFixed(2)}</span></div>
+            <div className="text-xs text-amber-600 font-semibold pt-1">+{order.points_earned} loyalty points earned ✨</div>
+          </div>
+          <button onClick={onClose} className="w-full text-white font-semibold rounded-lg py-2.5 mt-4 hover:opacity-90" style={{ background: BRAND }}>Continue shopping</button>
+          <div className="text-[11px] text-slate-400 text-center mt-2">This revenue is now live on the analytics dashboard.</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InboxModal({ mails, onClose, onOpenProduct }: { mails: InboxMail[]; onClose: () => void; onOpenProduct: (m: InboxMail) => void; }) {
+  const [sel, setSel] = useState(0);
+  const m = mails[sel];
+  return (
+    <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4" onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} className="bg-white rounded-2xl w-[min(820px,96vw)] h-[min(560px,90vh)] shadow-2xl overflow-hidden flex flex-col">
+        <div className="px-5 py-3 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+          <div className="font-bold flex items-center gap-2">📧 Inbox <span className="text-xs font-normal text-slate-400">— messages Conductor decided were worth sending</span></div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-lg">✕</button>
+        </div>
+        {mails.length === 0 ? (
+          <div className="flex-1 flex flex-col items-center justify-center text-slate-400 text-sm">
+            <div className="text-4xl mb-2">📭</div>
+            No targeted messages yet. Browse a few products — Conductor only emails when it changes the outcome.
+          </div>
+        ) : (
+          <div className="flex-1 grid grid-rows-[auto_1fr] sm:grid-rows-1 sm:grid-cols-[240px_1fr] overflow-hidden">
+            <div className="border-b sm:border-b-0 sm:border-r border-slate-200 overflow-auto max-h-[32vh] sm:max-h-none">
+              {mails.map((mail, i) => (
+                <button key={i} onClick={() => setSel(i)}
+                  className={`w-full text-left px-3 py-2.5 border-b border-slate-100 ${i === sel ? "bg-rose-50" : "hover:bg-slate-50"}`}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-700">{mail.channel_icon} {mail.from}</span>
+                    <span className="text-[10px] text-slate-400">{timeAgo(mail.ts)}</span>
+                  </div>
+                  <div className="text-sm font-semibold truncate">{mail.subject}</div>
+                  <div className="text-xs text-slate-400 truncate">{mail.preview}</div>
+                </button>
+              ))}
+            </div>
+            <div className="overflow-auto p-5">
+              <div className="text-xs text-slate-400">{m.channel_icon} delivered via {m.channel} · {m.from}</div>
+              <h2 className="text-lg font-bold mt-1">{m.subject}</h2>
+              {m.product && (
+                <div className="my-3 flex items-center gap-3 bg-slate-50 rounded-xl p-3">
+                  <div className={`w-16 h-16 rounded-lg flex items-center justify-center text-3xl ${CAT_THEME[m.product.cat] ?? "bg-white"}`}>{m.product.emoji}</div>
+                  <div><div className="text-sm font-semibold">{m.product.name}</div><div className="text-sm font-bold" style={{ color: BRAND }}>${m.product.sale_price ?? m.product.price}</div></div>
+                </div>
+              )}
+              <p className="text-sm text-slate-700 leading-relaxed">{m.body}</p>
+              {m.offer_pct ? <div className="mt-2 inline-block text-xs font-bold text-white px-2 py-1 rounded" style={{ background: BRAND }}>{m.offer_pct}% OFF inside</div> : null}
+              <button onClick={() => onOpenProduct(m)} className="block w-full text-center text-white font-semibold rounded-lg py-2.5 mt-4 hover:opacity-90" style={{ background: BRAND }}>{m.cta}</button>
+              <div className="text-[11px] text-slate-400 mt-2">🔗 Links straight to the product — no hunting, before the moment passes.</div>
+              {m.reason && <div className="text-[11px] text-slate-400 mt-3 border-t border-slate-100 pt-2">🧠 Why you got this: {m.reason}</div>}
+            </div>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+function timeAgo(ts: number) {
+  const s = Math.max(1, Math.floor(Date.now() / 1000 - ts));
+  if (s < 60) return `${s}s ago`;
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  return `${Math.floor(s / 3600)}h ago`;
+}
+
+function PhoneStore({ onClose, resolving, sug, products, cats, profile, wishIds, phoneSend, onCheckout, onEndSession }: {
+  onClose: () => void; resolving: boolean; sug: any; products: Product[]; cats: string[];
+  profile: Profile | null; wishIds: Set<string>;
+  phoneSend: (type: string, p?: Product) => void; onCheckout: () => void; onEndSession: () => void;
+}) {
+  const [cat, setCat] = useState("All");
+  const [sel, setSel] = useState<Product | null>(null);
+  const [added, setAdded] = useState(false);
+  const nba = sug?.next_best_action;
+  const cartCount = profile?.cart?.length ?? 0;
+  const shown = products.filter((p) => cat === "All" || p.cat === cat);
+
+  function view(p: Product) { phoneSend("view_product", p); setSel(p); }
+  function back() { phoneSend("back_to_browse"); setSel(null); }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center" onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} className="w-[348px] h-[700px] rounded-[2.6rem] border-[11px] border-[#0d1320] bg-[#0d1320] shadow-2xl overflow-hidden relative">
+        <div className="h-7 bg-[#0d1320] flex items-center justify-center"><div className="w-24 h-4 bg-black rounded-full" /></div>
+        {resolving ? (
+          <div className="flex flex-col items-center justify-center h-[calc(100%-1.75rem)] text-slate-300">
+            <div className="animate-pulse text-lg">🔗 Resolving identity…</div>
+            <div className="text-xs text-slate-500 mt-2">matching this device to a known shopper</div>
+          </div>
+        ) : (
+          <div className="bg-[#f3f4f6] h-[calc(100%-1.75rem)] overflow-auto text-slate-900 relative">
+            {/* sticky header — same brand UI as web */}
+            <div className="sticky top-0 z-10 bg-white border-b border-slate-200 px-3 h-11 flex items-center justify-between">
+              {sel ? <button onClick={back} className="text-sm text-slate-500">← Back</button>
+                   : <div className="font-extrabold text-lg" style={{ color: BRAND }}>VERVE</div>}
+              <button onClick={onCheckout} className="relative text-lg">🛒{cartCount ? <Badge n={cartCount} /> : null}</button>
+            </div>
+
+            {sug?.identity_resolved && (
+              <div className="m-2 text-[11px] text-emerald-700 bg-emerald-100 border border-emerald-200 rounded-lg px-2 py-1">
+                ✓ Same shopper recognized · {sug.devices?.join(" → ")} — cart & points followed you
+              </div>
+            )}
+
+            {/* on-site (In-App) Conductor nudge — the only kind of message allowed while live */}
+            {!sel && nba?.recommend && (
+              <div className="m-2 bg-white border rounded-2xl p-3 shadow-sm" style={{ borderColor: BRAND + "55" }}>
+                <div className="text-[10px] uppercase tracking-widest text-slate-400">{nba.channel_icon} In-app · {nba.channel}</div>
+                <div className="text-sm font-bold leading-snug mt-0.5">{nba.headline}</div>
+                <div className="text-xs text-slate-600 mt-1">{nba.message}</div>
+                {nba.product && <button onClick={() => view(nba.product)} className="mt-2 w-full text-white font-semibold rounded-xl py-1.5 text-xs" style={{ background: BRAND }}>{nba.cta ?? "Shop now →"}</button>}
+              </div>
+            )}
+
+            {sel ? (
+              /* compact product detail — interactive, same actions as web, mobile-tracked */
+              <div className="p-3">
+                <div className="w-full max-w-[200px] mx-auto"><ProductImage p={sel} big /></div>
+                <div className="text-[10px] text-slate-400 mt-2">{sel.cat}</div>
+                <div className="text-base font-bold leading-tight">{sel.name}</div>
+                <div className="text-amber-500 text-xs">{stars(sel.rating ?? 4.5)} <span className="text-slate-400">({sel.reviews_count})</span></div>
+                <div className="flex items-baseline gap-2 mt-1">
+                  <span className="text-xl font-extrabold" style={{ color: BRAND }}>${sel.sale_price ?? sel.price}</span>
+                  {sel.discount_pct ? <span className="text-xs text-slate-400 line-through">${sel.list_price}</span> : null}
+                </div>
+                <p className="text-xs text-slate-600 mt-2">{sel.blurb}</p>
+                <div className="flex gap-3 mt-2 text-[11px]">
+                  <button onClick={() => phoneSend("view_size_guide", sel)} className="text-slate-600 underline decoration-dotted">📏 Size guide</button>
+                  <button onClick={() => phoneSend("view_all_reviews", sel)} className="text-slate-600 underline decoration-dotted">💬 View all reviews</button>
+                </div>
+                <div className="flex gap-2 mt-3">
+                  <button onClick={() => { phoneSend("add_to_cart", sel); setAdded(true); setTimeout(() => setAdded(false), 1000); }}
+                    className="flex-1 text-white font-semibold rounded-lg py-2 text-sm" style={{ background: BRAND }}>{added ? "Added ✓" : "Add to cart"}</button>
+                  <button onClick={() => phoneSend(wishIds.has(sel.id) ? "remove_from_wishlist" : "add_to_wishlist", sel)}
+                    className="px-3 rounded-lg border border-slate-300" style={{ color: wishIds.has(sel.id) ? BRAND : "#475569" }}>{wishIds.has(sel.id) ? "♥" : "♡"}</button>
+                </div>
+              </div>
+            ) : (
+              <>
+                {/* category chips */}
+                <div className="flex gap-1 overflow-x-auto px-2 py-2">
+                  {["All", ...cats].map((c) => (
+                    <button key={c} onClick={() => setCat(c)}
+                      className={`text-[11px] whitespace-nowrap px-2.5 py-1 rounded-full border ${cat === c ? "text-white border-transparent" : "bg-white text-slate-600 border-slate-200"}`}
+                      style={cat === c ? { background: BRAND } : {}}>{c}</button>
+                  ))}
+                </div>
+                {/* product grid — reuses the exact web ProductCard */}
+                <div className="grid grid-cols-2 gap-2 px-2 pb-24">
+                  {shown.map((p) => (
+                    <ProductCard key={p.id} p={p} wished={wishIds.has(p.id)}
+                      onOpen={() => view(p)} onWish={() => phoneSend(wishIds.has(p.id) ? "remove_from_wishlist" : "add_to_wishlist", p)} onAdd={() => phoneSend("add_to_cart", p)} />
+                  ))}
+                </div>
+              </>
+            )}
+
+            {/* sticky bottom bar: checkout + leave/end session */}
+            <div className="sticky bottom-0 bg-white border-t border-slate-200 px-3 py-2 flex gap-2">
+              {cartCount > 0 && (
+                <button onClick={onCheckout} className="flex-1 text-white font-semibold rounded-lg py-2 text-sm" style={{ background: "#16a34a" }}>
+                  Checkout ({cartCount})
+                </button>
+              )}
+              <button onClick={onEndSession} className="flex-1 font-semibold rounded-lg py-2 text-sm border border-slate-300">Leave site 🚪</button>
+            </div>
+          </div>
+        )}
+        <button onClick={onClose} className="absolute top-1 right-4 text-slate-500 text-xs z-20">✕</button>
       </div>
     </div>
   );

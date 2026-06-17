@@ -154,7 +154,7 @@ def qini_curve(y: np.ndarray, t: np.ndarray, uplift: np.ndarray, n_bins: int = 1
     # Normalize so the curve is comparable; AUUC = area between model & random.
     total = ys[-1] if ys[-1] != 0 else 1.0
     ys_norm = [v / total for v in ys]
-    auuc = float(np.trapz(ys_norm, xs) - 0.5)   # area above the random diagonal
+    auuc = float(np.trapezoid(ys_norm, xs) - 0.5)   # area above the random diagonal
     return {"x": xs, "y": ys_norm, "auuc": auuc}
 
 

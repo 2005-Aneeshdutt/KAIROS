@@ -47,20 +47,67 @@ with causal metrics (Qini / AUUC), not accuracy.
 
 ## Quick start
 
+**Prerequisites:** Python 3.10+ and Node 18+. Three processes run together: the ML
+pipeline (once, to produce artifacts), the FastAPI backend, and the Next.js frontend.
+
+> Tip: inside a venv, always install with `python -m pip …` (not bare `pip`) — on some
+> setups the venv's `pip` shim resolves to the wrong interpreter.
+
+### 1. ML pipeline — produces the model artifacts (run first, once)
+
 ```bash
-# ML environment
 cd ml
-python -m venv .venv && source .venv/Scripts/activate   # Windows Git Bash
-pip install -r requirements.txt
-python -m src.data           # download + prepare the dataset
-python -m src.uplift         # train uplift models, emit scores + Qini
+python -m venv .venv
+source .venv/bin/activate            # Windows Git Bash: source .venv/Scripts/activate
+python -m pip install -r requirements.txt
 
-# API (after models trained)
-cd ../api && pip install -r requirements.txt && uvicorn main:app --reload
-
-# Web
-cd ../web && npm install && npm run dev
+python -m src.data                   # download + prepare the Hillstrom RCT
+python -m src.uplift                 # uplift model → scores.parquet, qini.json, model.joblib
+python -m src.allocate               # PuLP knapsack → allocation.json (marginal ROI, restraint)
+python -m src.bandit                 # Thompson bandit → bandit.json
+python -m src.live_model             # behavioral uplift model → live_uplift.joblib
 ```
+
+This writes everything to `ml/artifacts/`. The API reads from there.
+
+### 2. API — FastAPI backend (new terminal)
+
+```bash
+cd api
+python -m venv .venv
+source .venv/bin/activate            # Windows: source .venv/Scripts/activate
+python -m pip install -r requirements.txt
+
+# optional: enables Claude-written explanations (falls back to templates without it)
+cp .env.example .env                 # then add ANTHROPIC_API_KEY=...
+
+uvicorn main:app --reload            # serves http://localhost:8000
+```
+
+Sanity check: `curl http://localhost:8000/health` should list 6 artifacts.
+
+### 3. Web — Next.js dashboard + storefront (new terminal)
+
+```bash
+cd web
+npm install
+npm run dev                          # serves http://localhost:3000
+```
+
+The web app proxies `/api/*` to `http://127.0.0.1:8000` (override with `API_URL`).
+
+### 4. Open the product
+
+| URL | What it is |
+| --- | --- |
+| `http://localhost:3000`           | **Analytics dashboard** — buckets, Qini, marginal-ROI, restraint metrics, live store revenue |
+| `http://localhost:3000/strategy`  | **Marketing strategy** — funnel, segment playbook, channel strategy, head-to-head benchmark |
+| `http://localhost:3000/store`     | **Storefront** — shop as a customer (browse, bundle, checkout, "Leave site") |
+| `http://localhost:3000/console`   | **Conductor console** — the marketer's real-time view of the shopper |
+
+Open `/store` and `/console` side by side, click around, then **"Leave site"** to see the
+targeted email land in the 📧 inbox. See [docs/RUN_INSTRUCTIONS.md](docs/RUN_INSTRUCTIONS.md)
+for a full guided demo flow.
 
 ## Tech stack
 

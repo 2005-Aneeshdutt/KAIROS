@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { api, BUCKET_COLOR, Customer, fmtUSD, Segment } from "@/lib/api";
+import { api, store, BUCKET_COLOR, Customer, fmtUSD, Segment } from "@/lib/api";
 import { BanditChart, MarginalRoiChart, QiniChart, SegmentScatter } from "@/components/charts";
 
 export default function Page() {
@@ -17,6 +17,7 @@ export default function Page() {
   const [picked, setPicked] = useState<Customer | null>(null);
   const [explain, setExplain] = useState<string>("");
   const [loadingExplain, setLoadingExplain] = useState(false);
+  const [liveAnalytics, setLiveAnalytics] = useState<any>(null);
 
   useEffect(() => {
     api.segments().then((d) => { setSegments(d.segments); setTotal(d.total_customers); });
@@ -29,6 +30,15 @@ export default function Page() {
         api.customers(b, 80).then((r) => r.items)
       )
     ).then((groups) => setScatter(groups.flat()));
+  }, []);
+
+  // Real-time link to the live storefront: poll the cohort analytics so revenue,
+  // the funnel and the live bucket mix update on this dashboard as shoppers act.
+  useEffect(() => {
+    const poll = () => store.analytics().then((a) => a && setLiveAnalytics(a));
+    poll();
+    const t = setInterval(poll, 3000);
+    return () => clearInterval(t);
   }, []);
 
   useEffect(() => {
@@ -47,6 +57,10 @@ export default function Page() {
   const econ = alloc?.economics ?? {};
   const maxBudget = alloc?.curve?.length ? alloc.curve[alloc.curve.length - 1].budget : 100;
   const persuadablePct = segments.find((s) => s.bucket === "Persuadable")?.pct ?? 0;
+  // Live realised revenue from the connected store, folded into the headline in real time.
+  const liveRev = liveAnalytics?.revenue?.gross ?? 0;
+  const revenueGenerated = (m.revenue_generated ?? 0) + liveRev;
+  const totalImpact = (m.total_impact ?? 0) + liveRev;
 
   return (
     <main className="max-w-[1400px] mx-auto px-6 py-7">
@@ -62,7 +76,8 @@ export default function Page() {
           </p>
         </div>
         <div className="text-right text-sm text-slate-400">
-          <div className="mb-1">
+          <div className="mb-1 flex gap-3 justify-end">
+            <Link href="/strategy" className="text-slate-300 font-semibold hover:underline">📊 Strategy</Link>
             <Link href="/store" className="text-epsilon font-semibold hover:underline">▶ Live cross-device demo</Link>
           </div>
           <div><span className="text-slate-200 font-semibold tabular-nums">{total.toLocaleString()}</span> customers · Qini AUUC <span className="text-epsilon font-semibold">+{(qini?.auuc ?? 0).toFixed(3)}</span></div>
@@ -71,15 +86,64 @@ export default function Page() {
 
       {/* The three restraint metrics */}
       <section className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        <Metric label="Revenue Generated" value={fmtUSD(m.revenue_generated ?? 0)}
-          sub="targeting Persuadables" color="text-persuadable" />
+        <Metric label="Revenue Generated" value={fmtUSD(revenueGenerated)}
+          sub={liveRev > 0 ? `incl. ${fmtUSD(liveRev)} live store revenue` : "targeting Persuadables"} color="text-persuadable" live={liveRev > 0} />
         <Metric label="Budget Saved" value={fmtUSD(m.budget_saved ?? 0)}
           sub="not discounting Sure Things" color="text-sure" />
         <Metric label="Revenue Protected" value={fmtUSD(m.revenue_protected ?? 0)}
           sub="not annoying Sleeping Dogs" color="text-dog" />
-        <Metric label="Total Business Impact" value={fmtUSD(m.total_impact ?? 0)}
+        <Metric label="Total Business Impact" value={fmtUSD(totalImpact)}
           sub="same budget, better outcome" color="text-epsilon" highlight />
       </section>
+
+      {/* Live storefront activity — updates in real time as shoppers browse & buy */}
+      {liveAnalytics && liveAnalytics.funnel?.visitors > 0 && (
+        <section className="card mb-6">
+          <div className="flex items-center justify-between mb-3">
+            <div className="card-title mb-0 flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" /> Live storefront activity
+            </div>
+            <span className="text-xs text-slate-500">real-time · from the connected store</span>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            <LiveStat label="Revenue (live)" value={fmtUSD(liveAnalytics.revenue?.gross ?? 0)} accent="text-persuadable" />
+            <LiveStat label="Orders" value={`${liveAnalytics.revenue?.orders ?? 0}`} />
+            <LiveStat label="AOV" value={fmtUSD(liveAnalytics.revenue?.aov ?? 0)} />
+            <LiveStat label="Revenue at risk" value={fmtUSD(liveAnalytics.revenue_at_risk ?? 0)} accent="text-dog" sub="abandoned carts" />
+            <LiveStat label="Incentive given" value={fmtUSD(liveAnalytics.revenue?.incentive_given ?? 0)} sub="discounts" />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+            <div>
+              <div className="text-[10px] uppercase tracking-widest text-slate-500 mb-1.5">Funnel</div>
+              <div className="flex items-center gap-2 text-sm">
+                {[["Visitors", liveAnalytics.funnel.visitors], ["Browsed", liveAnalytics.funnel.browsed], ["Carted", liveAnalytics.funnel.carted], ["Bought", liveAnalytics.funnel.bought]].map(([k, v], i, arr) => (
+                  <div key={k as string} className="flex items-center gap-2">
+                    <div className="bg-panel2 border border-line rounded-lg px-3 py-1.5 text-center">
+                      <div className="font-bold tabular-nums">{v as any}</div>
+                      <div className="text-[9px] uppercase tracking-wider text-slate-500">{k as string}</div>
+                    </div>
+                    {i < arr.length - 1 && <span className="text-slate-600">→</span>}
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div>
+              <div className="text-[10px] uppercase tracking-widest text-slate-500 mb-1.5">Live segment mix</div>
+              <div className="flex flex-wrap gap-2">
+                {Object.entries(liveAnalytics.buckets ?? {}).map(([b, n]) => (
+                  <span key={b} className="flex items-center gap-1.5 text-xs text-slate-300 bg-panel2 border border-line rounded-full px-2.5 py-1">
+                    <span className="w-2 h-2 rounded-full" style={{ background: BUCKET_COLOR[b] ?? "#64748b" }} />
+                    {b} <span className="text-slate-500 tabular-nums">{n as any}</span>
+                  </span>
+                ))}
+                {(liveAnalytics.top_products ?? []).length > 0 && (
+                  <span className="text-xs text-slate-500 ml-1">· hot: {liveAnalytics.top_products.slice(0, 3).map((p: any) => p.emoji).join(" ")}</span>
+                )}
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {/* Segment scatter */}
@@ -179,12 +243,22 @@ export default function Page() {
   );
 }
 
-function Metric({ label, value, sub, color, highlight }: any) {
+function Metric({ label, value, sub, color, highlight, live }: any) {
   return (
     <div className={`card ${highlight ? "ring-1 ring-epsilon/40" : ""}`}>
-      <div className="card-title mb-1">{label}</div>
+      <div className="card-title mb-1 flex items-center gap-1.5">{label}{live && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />}</div>
       <div className={`metric ${color}`}>{value}</div>
       <div className="text-xs text-slate-500 mt-1">{sub}</div>
+    </div>
+  );
+}
+
+function LiveStat({ label, value, accent, sub }: { label: string; value: string; accent?: string; sub?: string }) {
+  return (
+    <div className="bg-panel2 border border-line rounded-xl px-3 py-2.5">
+      <div className="text-[10px] uppercase tracking-wider text-slate-500">{label}</div>
+      <div className={`text-xl font-bold tabular-nums ${accent ?? "text-slate-100"}`}>{value}</div>
+      {sub && <div className="text-[10px] text-slate-500">{sub}</div>}
     </div>
   );
 }

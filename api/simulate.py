@@ -202,5 +202,85 @@ def run_simulation(sample_size: int = 4000, ticks: int = 40, seed: int | None = 
     }
 
 
+def benchmark(n: int = 5000, seed: int = 42) -> dict:
+    """Head-to-head benchmark over n customers — Traditional vs Conductor on the SAME
+    population, with the same response model. Deterministic (seeded) so the numbers are
+    reproducible and testable. Returns both worlds plus the deltas that prove the case.
+
+    Traditional : blasts the top half by propensity with 2 generic touches + a blanket
+                  20% discount; wrong channel often; over-contact drives unsubscribes.
+    Conductor   : one touch to Persuadables only, on their best channel, with a
+                  right-sized ~10% discount (Minimum Effective Dose); holds/suppresses
+                  the rest, so Sure Things buy at full price and Sleeping Dogs are spared.
+    """
+    rng = random.Random(seed)
+    pop = _population()
+    sample = pop.sample(min(n, len(pop)), random_state=seed)
+    rows = list(sample.itertuples(index=False))
+    thr = sample["base_rate"].median()
+    trad, cond = _new_world(), _new_world()
+
+    for row in rows:
+        a = ARCH[row.bucket]
+        # ---- Traditional ----
+        trad["customers"] += 1
+        if row.base_rate >= thr:
+            trad["touches"] += 2
+            trad["send_cost"] += SEND_COST["Email"] + SEND_COST["SMS"]
+            if rng.random() < a["annoy"] * 2:
+                trad["unsubscribes"] += 1
+            else:
+                p = a["wrong"] if row.best_channel != "Email" else a["best"]
+                if rng.random() < p:
+                    trad["conversions"] += 1
+                    trad["gross"] += AOV
+                    trad["discount"] += AOV * DISCOUNT          # blanket 20% to everyone targeted
+        elif rng.random() < a["ctrl"]:
+            trad["conversions"] += 1
+            trad["gross"] += AOV
+        # ---- Conductor ----
+        cond["customers"] += 1
+        if row.bucket == "Persuadable":
+            cond["touches"] += 1
+            cond["send_cost"] += SEND_COST.get(row.best_channel, 0.1)
+            if rng.random() < a["best"]:
+                cond["conversions"] += 1
+                cond["gross"] += AOV
+                cond["discount"] += AOV * 0.10                  # Minimum Effective Dose (~10%)
+        elif rng.random() < a["ctrl"]:                          # held/suppressed → organic, full price
+            cond["conversions"] += 1
+            cond["gross"] += AOV
+
+    _settle(trad); _settle(cond)
+
+    def pct(new, old):
+        return round(100 * (new - old) / old, 1) if old else None
+
+    t_spend = round(trad["discount"] + trad["send_cost"], 2)
+    c_spend = round(cond["discount"] + cond["send_cost"], 2)
+    summarize = lambda w, spend: {
+        **w, "spend": spend,
+        "conv_rate": round(100 * w["conversions"] / max(w["customers"], 1), 2),
+        "net_per_customer": round(w["net"] / max(w["customers"], 1), 3),
+        "roi": round(w["net"] / spend, 2) if spend else None,
+    }
+    T, C = summarize(trad, t_spend), summarize(cond, c_spend)
+
+    return {
+        "n": len(rows), "seed": seed,
+        "traditional": T, "conductor": C,
+        "deltas": {
+            "net_revenue": round(C["net"] - T["net"], 2),
+            "net_revenue_pct": pct(C["net"], T["net"]),
+            "messages_saved": T["touches"] - C["touches"],
+            "messages_saved_pct": pct(C["touches"], T["touches"]),
+            "discount_saved": round(T["discount"] - C["discount"], 2),
+            "unsubs_avoided": T["unsubscribes"] - C["unsubscribes"],
+            "spend_saved": round(t_spend - c_spend, 2),
+            "roi_multiple": round(C["roi"] / T["roi"], 1) if (T["roi"] and C["roi"]) else None,
+        },
+    }
+
+
 def sse_format(event: dict) -> str:
     return f"data: {json.dumps(event)}\n\n"

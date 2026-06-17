@@ -30,6 +30,9 @@ export default function ConsolePage() {
   const mail = data?.mail;
   const events = data?.recent ?? [];
   const l = p?.loyalty;
+  const patterns = data?.patterns ?? [];
+  const econ = data?.economics;
+  const bundle = data?.bundle;
 
   return (
     <main className="min-h-screen bg-ink text-slate-200">
@@ -53,6 +56,28 @@ export default function ConsolePage() {
         <p className="text-sm text-slate-500 mb-4">
           The marketer&apos;s real-time view of the shopper currently browsing the store (open the store in another tab and click — this updates live).
         </p>
+
+        {econ && p && p.events > 0 && (
+          <div className="card mb-5">
+            <div className="flex items-center justify-between mb-3">
+              <div className="card-title mb-0">Two-world economics · live for this shopper</div>
+              <span className="text-[10px] uppercase tracking-widest text-slate-500">{econ.basis}</span>
+            </div>
+            <div className="grid grid-cols-3 gap-4">
+              <EconCol title="🚫 Without Conductor" tone="bad"
+                rows={[["Messages sent", econ.traditional.messages], ["Budget spent", `$${econ.traditional.budget}`], ["Annoyance risk", `${econ.traditional.annoyance_pct}%`]]} />
+              <EconCol title="✅ With Conductor" tone="good"
+                rows={[["Messages sent", econ.conductor.messages], ["Budget spent", `$${econ.conductor.budget}`], ["Annoyance risk", `${econ.conductor.annoyance_pct}%`]]} />
+              <div className="rounded-xl p-3 border border-epsilon/30 bg-epsilon/5">
+                <div className="text-[10px] uppercase tracking-widest text-epsilon mb-2">Conductor advantage</div>
+                <Delta k="Messages saved" v={econ.delta.messages_saved} />
+                <Delta k="Budget saved" v={`$${econ.delta.budget_saved}`} />
+                <Delta k="Annoyance avoided" v={`${econ.delta.annoyance_avoided_pct}%`} />
+              </div>
+            </div>
+            <p className="text-xs text-slate-500 mt-2">Both worlds run on the <span className="text-slate-300">same</span> shopper, accumulating with every click — the gap is what restraint is worth.</p>
+          </div>
+        )}
 
         {!p || p.events === 0 ? (
           <div className="card text-center py-16 text-slate-500">
@@ -94,6 +119,32 @@ export default function ConsolePage() {
                     </div>
                   ))}
                 </div>
+
+                {p.interests?.length > 0 && (
+                  <div className="mt-3">
+                    <div className="text-[10px] uppercase tracking-widest text-slate-500 mb-1.5">Considering ({p.interests.length}) · per-product intent</div>
+                    <div className="space-y-1.5">
+                      {p.interests.map((it: any) => (
+                        <div key={it.id} className="flex items-center gap-2">
+                          <span className="text-base">{it.emoji}</span>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs text-slate-200 truncate">{it.name}</span>
+                              <span className="text-[10px] text-slate-400 tabular-nums ml-2">{it.intent}</span>
+                            </div>
+                            <div className="h-1.5 bg-panel2 rounded-full overflow-hidden mt-0.5">
+                              <div className="h-full" style={{ width: `${it.intent}%`, background: SEG_COLOR.Persuadable }} />
+                            </div>
+                          </div>
+                          {it.bought ? <span className="text-[9px] px-1 rounded bg-violet-500/20 text-violet-300">bought</span>
+                            : it.in_cart ? <span className="text-[9px] px-1 rounded bg-emerald-500/20 text-emerald-300">cart</span>
+                            : it.in_wishlist ? <span className="text-[9px] px-1 rounded bg-rose-500/20 text-rose-300">wish</span>
+                            : <span className="text-[9px] text-slate-500">{it.views}×</span>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {l && (
@@ -111,9 +162,36 @@ export default function ConsolePage() {
                 <div className="card">
                   <div className="card-title">Next best action</div>
                   <div className="text-sm font-semibold" style={{ color: nba.recommend ? "#22c55e" : "#94a3b8" }}>
-                    {nba.recommend ? `TARGET · ${nba.channel}` : "HOLD / restraint"}
+                    {nba.recommend ? `TARGET · ${nba.channel_icon ?? ""} ${nba.channel}` : "HOLD / restraint"}
                   </div>
+                  {nba.channel_why && <div className="text-[11px] text-slate-500 mt-0.5">Channel: {nba.channel_why}</div>}
                   <div className="text-xs text-slate-400 mt-1">{nba.rationale}</div>
+                </div>
+              )}
+
+              {patterns.length > 0 && (
+                <div className="card">
+                  <div className="card-title">Detected patterns <span className="text-[10px] font-normal text-slate-500">· updating live</span></div>
+                  <div className="space-y-1.5">
+                    {patterns.map((pt: any) => (
+                      <div key={pt.code} className="flex items-start gap-2 text-xs">
+                        <span>{pt.icon}</span>
+                        <div>
+                          <span className="font-semibold text-slate-200">{pt.label}</span>
+                          <span className={`ml-1.5 text-[9px] px-1 rounded ${pt.intent === "up" ? "bg-emerald-500/20 text-emerald-300" : "bg-slate-500/20 text-slate-400"}`}>{pt.intent === "up" ? "intent ↑" : "intent ↓"}</span>
+                          <div className="text-slate-500">{pt.detail}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {bundle && (
+                <div className="card">
+                  <div className="card-title">Dynamic bundle offered</div>
+                  <div className="text-sm font-semibold text-slate-200">{bundle.products.map((p: any) => p.emoji).join(" ")} · {bundle.discount_pct}% off → ${bundle.price}</div>
+                  <div className="text-[11px] text-slate-500 mt-1">{bundle.rationale}</div>
                 </div>
               )}
             </div>
@@ -128,12 +206,36 @@ export default function ConsolePage() {
               </div>
               {tab === "data" && <DataLayer events={events} />}
               {tab === "with" && <WithConductor mail={mail} />}
-              {tab === "without" && <WithoutConductor mail={mail} />}
+              {tab === "without" && <WithoutConductor mail={mail} econ={econ} />}
             </div>
           </div>
         )}
       </div>
     </main>
+  );
+}
+
+function EconCol({ title, tone, rows }: { title: string; tone: "good" | "bad"; rows: [string, any][] }) {
+  const ring = tone === "good" ? "border-emerald-500/30 bg-emerald-500/5" : "border-rose-500/30 bg-rose-500/5";
+  return (
+    <div className={`rounded-xl p-3 border ${ring}`}>
+      <div className="text-xs font-semibold mb-2">{title}</div>
+      {rows.map(([k, v]) => (
+        <div key={k} className="flex items-center justify-between text-sm py-0.5">
+          <span className="text-slate-500 text-xs">{k}</span>
+          <span className={`font-bold tabular-nums ${tone === "good" ? "text-emerald-300" : "text-rose-300"}`}>{v}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function Delta({ k, v }: { k: string; v: any }) {
+  return (
+    <div className="flex items-center justify-between text-sm py-0.5">
+      <span className="text-slate-400 text-xs">{k}</span>
+      <span className="font-bold text-epsilon tabular-nums">+{v}</span>
+    </div>
   );
 }
 
@@ -161,7 +263,20 @@ function WithConductor({ mail }: { mail: any }) {
   return c.send ? (
     <div className="bg-panel2 border border-emerald-500/30 rounded-xl overflow-hidden">
       <div className="bg-emerald-500/10 px-4 py-2 text-xs text-emerald-300 flex justify-between"><span>📧 {c.channel} · {c.reward_type}</span><span>{c.timing}</span></div>
-      <div className="p-4"><div className="font-semibold text-white">{c.subject}</div><div className="text-sm text-slate-400 mt-1">{c.body}</div></div>
+      <div className="p-4">
+        <div className="font-semibold text-white">{c.subject}</div>
+        <div className="text-sm text-slate-400 mt-1">{c.body}</div>
+        {c.interests?.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mt-3">
+            {c.interests.map((it: any) => (
+              <span key={it.id} className="flex items-center gap-1 text-[11px] bg-panel2 border border-line rounded-full pl-1.5 pr-2 py-0.5">
+                <span>{it.emoji}</span><span className="text-slate-300">{it.name}</span>
+                <span className="text-slate-500">·{it.intent}</span>
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
       <div className="px-4 py-2 border-t border-line text-xs text-slate-500">🧠 {c.reason}</div>
     </div>
   ) : (
@@ -173,8 +288,10 @@ function WithConductor({ mail }: { mail: any }) {
   );
 }
 
-function WithoutConductor({ mail }: { mail: any }) {
+function WithoutConductor({ mail, econ }: { mail: any; econ: any }) {
   const blasts = mail?.traditional ?? [];
+  const sent = econ?.traditional?.messages ?? blasts.length;
+  const spent = econ?.traditional?.budget ?? 0;
   return (
     <div className="bg-black/50 border border-line rounded-xl p-4 font-mono text-xs max-h-[520px] overflow-auto">
       <div className="text-amber-400 mb-2">$ legacy-crm --batch-blast --segment=ALL</div>
@@ -185,7 +302,9 @@ function WithoutConductor({ mail }: { mail: any }) {
           <div className="text-slate-600 pl-2">{b.preview}</div>
         </div>
       ))}
-      <div className="border-t border-line pt-2 mt-1 text-rose-400">⚠ {blasts.length} generic messages · no targeting · same to everyone</div>
+      <div className="border-t border-line pt-2 mt-1 text-rose-400">
+        ⚠ {sent} messages blasted to THIS shopper so far · ${spent} spent · no targeting · keeps firing as they browse
+      </div>
     </div>
   );
 }
