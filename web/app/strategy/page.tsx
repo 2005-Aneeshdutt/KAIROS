@@ -154,16 +154,21 @@ export default function StrategyPage() {
         </div>
       </section>
 
-      {/* Head-to-head benchmark — reproducible proof of superiority */}
+      {/* Real-RCT validation — the credibility anchor (measured, not modelled) */}
+      {bench?.validation && <RctValidation v={bench.validation} />}
+
+      {/* Head-to-head benchmark — illustrative simulation */}
       <section className="card mt-6">
         <div className="flex items-center justify-between flex-wrap gap-2">
-          <div className="card-title mb-0">Head-to-head benchmark <span className="text-[10px] font-normal text-slate-500">· {bench ? `${bench.n.toLocaleString()} customers, seed ${bench.seed}` : "Traditional vs Conductor"}</span></div>
+          <div className="card-title mb-0 flex items-center gap-2">Head-to-head benchmark
+            <span className="pill text-[10px] bg-amber-500/15 text-amber-300 border border-amber-500/30">illustrative simulation</span>
+            <span className="text-[10px] font-normal text-slate-500">· {bench ? `${bench.n.toLocaleString()} customers, seed ${bench.seed}` : "Traditional vs Conductor"}</span></div>
           <div className="flex gap-2">
             <button onClick={() => runBenchmark(42)} disabled={benchLoading} className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-line hover:bg-panel2 disabled:opacity-50">{benchLoading ? "Running…" : "Re-run (seed 42)"}</button>
             <button onClick={() => runBenchmark(Math.floor(Math.random() * 9999))} disabled={benchLoading} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-epsilon/20 text-epsilon hover:bg-epsilon/30 disabled:opacity-50">Random seed</button>
           </div>
         </div>
-        <p className="text-xs text-slate-500 mt-1 mb-3">Both strategies run on the <span className="text-slate-300">same</span> customers with the same response model — reproducible, not cherry-picked.</p>
+        <p className="text-xs text-slate-500 mt-1 mb-3">A seeded, reproducible simulation on the <span className="text-slate-300">same</span> customers (archetype response model) — directional, for the demo. The numbers <span className="text-slate-300">proven on real data</span> are in the panel above.</p>
 
         {bench ? (
           <>
@@ -217,6 +222,65 @@ function BenchDelta({ label, value, sub }: { label: string; value: string; sub: 
       <div className="text-xl font-bold text-epsilon tabular-nums">{value}</div>
       <div className="text-[10px] text-slate-500">{sub}</div>
     </div>
+  );
+}
+
+function RctValidation({ v }: { v: any }) {
+  const COLOR: Record<string, string> = {
+    Persuadable: "#3b82f6", "Sure Thing": "#22c55e", "Sleeping Dog": "#f59e0b", "Lost Cause": "#ef4444",
+  };
+  // The action is the thesis; the pp lift is the real evidence behind it. We deliberately
+  // avoid relative-% (a tiny base inflates it and invites "then why not market to them?").
+  const ACTION: Record<string, { verb: string; good: boolean }> = {
+    Persuadable: { verb: "Spend here — incremental", good: true },
+    "Sure Thing": { verb: "Hold — buys anyway", good: false },
+    "Sleeping Dog": { verb: "Suppress — contact backfires", good: false },
+    "Lost Cause": { verb: "Skip — too small to fund", good: false },
+  };
+  return (
+    <section className="card mt-6 border border-emerald-500/30">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="card-title mb-0 flex items-center gap-2">Validated on a real randomized experiment
+          <span className="pill text-[10px] bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">measured, not modelled</span>
+        </div>
+        <span className="text-[10px] text-slate-500">{v.source} · {v.n_customers.toLocaleString()} customers ({v.n_treated.toLocaleString()} treated / {v.n_control.toLocaleString()} control)</span>
+      </div>
+      <p className="text-xs text-slate-500 mt-1 mb-3">
+        Conversion when contacted vs. a held-out control group, straight from the experiment — no assumptions.
+        The four buckets aren&apos;t a story; they&apos;re visible in the raw treated-minus-control lift.
+      </p>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+        {v.buckets.map((b: any) => (
+          <div key={b.bucket} className="bg-panel2 border border-line rounded-xl p-3" style={{ borderTop: `3px solid ${COLOR[b.bucket]}` }}>
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-sm" style={{ color: COLOR[b.bucket] }}>{b.bucket}</span>
+              <span className={`text-[10px] font-bold ${b.marketing_helps ? "text-emerald-300" : "text-rose-300"}`}>
+                {b.abs_uplift_pp > 0 ? "+" : ""}{b.abs_uplift_pp}pp
+              </span>
+            </div>
+            <div className="flex items-end gap-3 mt-2 text-xs">
+              <div><div className="text-slate-500 text-[10px]">contacted</div><div className="tabular-nums font-semibold text-slate-100">{b.treated_conv_pct}%</div></div>
+              <div><div className="text-slate-500 text-[10px]">control</div><div className="tabular-nums font-semibold text-slate-400">{b.control_conv_pct}%</div></div>
+            </div>
+            <div className={`text-[11px] mt-2 font-semibold ${b.bucket === "Persuadable" ? "text-emerald-400" : b.bucket === "Sleeping Dog" ? "text-rose-400" : "text-slate-400"}`}>
+              → {ACTION[b.bucket]?.verb ?? (b.marketing_helps ? "marketing helps" : "marketing hurts")}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="bg-rose-500/5 border border-rose-500/30 rounded-xl px-4 py-3 text-sm">
+        <span className="font-semibold text-rose-300">The proof restraint pays:</span>{" "}
+        <span className="text-slate-300">
+          In this real experiment, contacting <b>Sleeping Dogs</b> cut their conversion by{" "}
+          <b className="text-rose-300">{Math.abs(v.headline.sleeping_dog_abs_uplift_pp)}pp</b> — every message there
+          destroyed organic revenue. Meanwhile marketing lifted <b>Persuadables</b> by{" "}
+          <b className="text-emerald-300">{v.headline.persuadable_rel_lift_pct}%</b>. Spend on one, suppress the other —
+          and now it&apos;s measured, not asserted.
+        </span>
+      </div>
+    </section>
   );
 }
 
