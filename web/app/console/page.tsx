@@ -267,13 +267,11 @@ function WithConductor({ mail }: { mail: any }) {
         <div className="font-semibold text-white">{c.subject}</div>
         <div className="text-sm text-slate-400 mt-1">{c.body}</div>
         {c.interests?.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 mt-3">
-            {c.interests.map((it: any) => (
-              <span key={it.id} className="flex items-center gap-1 text-[11px] bg-panel2 border border-line rounded-full pl-1.5 pr-2 py-0.5">
-                <span>{it.emoji}</span><span className="text-slate-300">{it.name}</span>
-                <span className="text-slate-500">·{it.intent}</span>
-              </span>
-            ))}
+          <div className="mt-3">
+            <div className="text-[10px] uppercase tracking-widest text-slate-500 mb-1.5">Consideration set · one card per item</div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {c.interests.map((it: any) => <InterestCard key={it.id} it={it} offerPct={c.offer_pct} />)}
+            </div>
           </div>
         )}
       </div>
@@ -284,6 +282,40 @@ function WithConductor({ mail }: { mail: any }) {
       <div className="font-semibold text-slate-300">🔕 Deliberate silence</div>
       <div className="text-sm text-slate-500 mt-1">{c.reason}</div>
       <div className="text-xs text-emerald-400 mt-2">Restraint = budget saved + customer not annoyed.</div>
+    </div>
+  );
+}
+
+function InterestCard({ it, offerPct }: { it: any; offerPct?: number }) {
+  const status = it.bought
+    ? { label: "Bought", cls: "bg-emerald-500/20 text-emerald-300" }
+    : it.in_cart
+    ? { label: "In cart", cls: "bg-sky-500/20 text-sky-300" }
+    : it.in_wishlist
+    ? { label: "Wishlist", cls: "bg-violet-500/20 text-violet-300" }
+    : { label: "Viewing", cls: "bg-slate-500/20 text-slate-300" };
+  const intentColor = it.intent >= 65 ? "bg-emerald-400" : it.intent >= 40 ? "bg-amber-400" : "bg-slate-400";
+  const showOffer = offerPct != null && offerPct > 0 && !it.bought;
+  return (
+    <div className="bg-panel2 border border-line rounded-xl p-3">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-xl">{it.emoji}</span>
+          <div className="min-w-0">
+            <div className="text-sm font-semibold text-slate-100 truncate">{it.name}</div>
+            <div className="text-[10px] text-slate-500">{it.cat} · ${it.price}</div>
+          </div>
+        </div>
+        <span className={`pill text-[10px] shrink-0 ${status.cls}`}>{status.label}</span>
+      </div>
+      <div className="mt-2">
+        <div className="flex justify-between text-[10px] text-slate-500 mb-1"><span>purchase intent</span><span className="tabular-nums text-slate-300">{it.intent}/100</span></div>
+        <div className="h-1.5 bg-black/40 rounded-full overflow-hidden"><div className={`h-full ${intentColor}`} style={{ width: `${it.intent}%` }} /></div>
+      </div>
+      <div className="flex items-center justify-between mt-2 text-[10px] text-slate-500">
+        <span>{it.views} view{it.views === 1 ? "" : "s"} · {it.dwell_s}s{it.reviews ? ` · ${it.reviews} reviews read` : ""}</span>
+        {showOffer && <span className="font-semibold text-epsilon">{offerPct}% off</span>}
+      </div>
     </div>
   );
 }
