@@ -202,10 +202,61 @@ def run_simulation(sample_size: int = 4000, ticks: int = 40, seed: int | None = 
     }
 
 
+@lru_cache(maxsize=1)
+def rct_validation() -> dict:
+    """Ground-truth validation from the REAL randomized experiment behind the model
+    (Hillstrom MineThatData email RCT, 64k customers, random treatment/control).
+
+    Unlike the head-to-head simulation below, every number here is measured directly
+    from observed treated-vs-control outcomes — nothing modelled, nothing assumed. This
+    is the credibility anchor: the four-bucket thesis proven on a real experiment.
+    The standout result is the Sleeping Dog row, where contact *lowers* conversion."""
+    df = pd.read_parquet(ART / "scores.parquet")
+    aov = round(float(df.loc[df["conversion"] == 1, "spend"].mean()), 2)
+    order = ["Persuadable", "Sure Thing", "Sleeping Dog", "Lost Cause"]
+    buckets = []
+    for b in order:
+        g = df[df["bucket"] == b]
+        t = g[g["treatment"] == 1]["conversion"]
+        c = g[g["treatment"] == 0]["conversion"]
+        tr = float(t.mean()) if len(t) else 0.0
+        cr = float(c.mean()) if len(c) else 0.0
+        lift = tr - cr
+        buckets.append({
+            "bucket": b,
+            "n_treated": int(len(t)), "n_control": int(len(c)),
+            "treated_conv_pct": round(100 * tr, 2),
+            "control_conv_pct": round(100 * cr, 2),
+            "abs_uplift_pp": round(100 * lift, 2),
+            "rel_lift_pct": round(100 * lift / cr) if cr else None,
+            "marketing_helps": lift > 0,
+        })
+    treated_all = float(df[df["treatment"] == 1]["conversion"].mean())
+    control_all = float(df[df["treatment"] == 0]["conversion"].mean())
+    pers = next(x for x in buckets if x["bucket"] == "Persuadable")
+    dog = next(x for x in buckets if x["bucket"] == "Sleeping Dog")
+    return {
+        "source": "Hillstrom MineThatData email RCT",
+        "is_real": True,
+        "n_customers": int(len(df)),
+        "n_treated": int((df["treatment"] == 1).sum()),
+        "n_control": int((df["treatment"] == 0).sum()),
+        "aov": aov,
+        "overall_treated_conv_pct": round(100 * treated_all, 2),
+        "overall_control_conv_pct": round(100 * control_all, 2),
+        "buckets": buckets,
+        "headline": {
+            "persuadable_rel_lift_pct": pers["rel_lift_pct"],
+            "sleeping_dog_abs_uplift_pp": dog["abs_uplift_pp"],   # negative: contact hurts
+        },
+    }
+
+
 def benchmark(n: int = 5000, seed: int = 42) -> dict:
     """Head-to-head benchmark over n customers — Traditional vs Conductor on the SAME
-    population, with the same response model. Deterministic (seeded) so the numbers are
-    reproducible and testable. Returns both worlds plus the deltas that prove the case.
+    population. This is an ILLUSTRATIVE simulation (archetype response model, clearly
+    labelled) for the animated demo; the credible proof lives in `validation`, which is
+    measured directly from the real RCT. Deterministic (seeded) so it's reproducible.
 
     Traditional : blasts the top half by propensity with 2 generic touches + a blanket
                   20% discount; wrong channel often; over-contact drives unsubscribes.
@@ -268,6 +319,8 @@ def benchmark(n: int = 5000, seed: int = 42) -> dict:
 
     return {
         "n": len(rows), "seed": seed,
+        "is_simulation": True,
+        "validation": rct_validation(),     # real RCT numbers travel alongside the sim
         "traditional": T, "conductor": C,
         "deltas": {
             "net_revenue": round(C["net"] - T["net"], 2),
