@@ -1,0 +1,36 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  background: radial-gradient(1200px 600px at 70% -10%, #16203a 0%, #0a0e1a 55%);
+  color: #e7ecf5;
+}
+
+.card {
+  @apply bg-panel border border-line rounded-2xl p-5 shadow-lg;
+}
+.card-title {
+  @apply text-xs font-semibold uppercase tracking-widest text-slate-400 mb-3;
+}
+.metric {
+  @apply text-3xl font-bold tabular-nums;
+}
+.pill {
+  @apply text-[11px] font-semibold px-2 py-0.5 rounded-full;
+}
+
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+.animate-marquee {
+  animation: marquee 32s linear infinite;
+}
+.animate-marquee:hover {
+  animation-play-state: paused;
+}
