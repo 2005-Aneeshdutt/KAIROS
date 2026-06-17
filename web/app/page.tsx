@@ -24,7 +24,7 @@ export default function Page() {
     api.qini().then(setQini);
     api.bandit().then(setBandit);
     api.allocation().then((a) => { setAlloc(a); setBudget(a?.knee?.budget ?? 0); });
-    // Sample points across buckets for the scatter.
+
     Promise.all(
       ["Persuadable", "Sure Thing", "Lost Cause", "Sleeping Dog"].map((b) =>
         api.customers(b, 80).then((r) => r.items)
@@ -32,8 +32,6 @@ export default function Page() {
     ).then((groups) => setScatter(groups.flat()));
   }, []);
 
-  // Real-time link to the live storefront: poll the cohort analytics so revenue,
-  // the funnel and the live bucket mix update on this dashboard as shoppers act.
   useEffect(() => {
     const poll = () => store.analytics().then((a) => a && setLiveAnalytics(a));
     poll();
@@ -57,14 +55,14 @@ export default function Page() {
   const econ = alloc?.economics ?? {};
   const maxBudget = alloc?.curve?.length ? alloc.curve[alloc.curve.length - 1].budget : 100;
   const persuadablePct = segments.find((s) => s.bucket === "Persuadable")?.pct ?? 0;
-  // Live realised revenue from the connected store, folded into the headline in real time.
+
   const liveRev = liveAnalytics?.revenue?.gross ?? 0;
   const revenueGenerated = (m.revenue_generated ?? 0) + liveRev;
   const totalImpact = (m.total_impact ?? 0) + liveRev;
 
   return (
     <main className="max-w-[1400px] mx-auto px-6 py-7">
-      {/* Header */}
+
       <header className="flex items-end justify-between mb-6">
         <div>
           <div className="flex items-center gap-3">
@@ -84,7 +82,6 @@ export default function Page() {
         </div>
       </header>
 
-      {/* The three restraint metrics */}
       <section className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
         <Metric label="Revenue Generated" value={fmtUSD(revenueGenerated)}
           sub={liveRev > 0 ? `incl. ${fmtUSD(liveRev)} live store revenue` : "targeting Persuadables"} color="text-persuadable" live={liveRev > 0} />
@@ -96,7 +93,6 @@ export default function Page() {
           sub="same budget, better outcome" color="text-epsilon" highlight />
       </section>
 
-      {/* Live storefront activity — updates in real time as shoppers browse & buy */}
       {liveAnalytics && liveAnalytics.funnel?.visitors > 0 && (
         <section className="card mb-6">
           <div className="flex items-center justify-between mb-3">
@@ -146,7 +142,7 @@ export default function Page() {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        {/* Segment scatter */}
+
         <div className="card lg:col-span-2">
           <div className="card-title">Customer base — only {persuadablePct}% are Persuadable</div>
           <SegmentScatter points={scatter} onPick={pick} />
@@ -160,7 +156,6 @@ export default function Page() {
           </div>
         </div>
 
-        {/* Customer inspector + Claude explanation */}
         <div className="card">
           <div className="card-title">Decision Inspector {picked ? `· ${picked.customer_id}` : ""}</div>
           {!picked ? (
@@ -190,7 +185,6 @@ export default function Page() {
           )}
         </div>
 
-        {/* Marginal ROI + budget slider */}
         <div className="card lg:col-span-2">
           <div className="flex items-center justify-between">
             <div className="card-title mb-0">Budget allocation — marginal ROI</div>
@@ -208,7 +202,6 @@ export default function Page() {
           </p>
         </div>
 
-        {/* Qini */}
         <div className="card">
           <div className="card-title">Qini curve — causal validation</div>
           <QiniChart data={qini ?? { x: [], y: [], auuc: 0 }} />
@@ -217,7 +210,6 @@ export default function Page() {
           </p>
         </div>
 
-        {/* Bandit */}
         <div className="card lg:col-span-3">
           <div className="flex items-center justify-between">
             <div className="card-title mb-0">Channel orchestration — self-optimizing bandit</div>

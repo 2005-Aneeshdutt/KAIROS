@@ -1,15 +1,3 @@
-"""Real-time behavioural tracking + identity resolution + next-best-action.
-
-This powers the live, clickable demo:
-  - The storefront posts every click to /track (product views, dwell, add-to-cart).
-  - We accumulate a per-visitor behavioural profile and score *intent* live.
-  - Identity resolution: the same identity key seen from a second device is linked,
-    so the full cross-device journey is one profile (the Epsilon CORE-ID story).
-  - When the visitor lands on a new device, we compute the next-best-action — the
-    right message on the right channel — from everything we've observed.
-
-State is in-memory (a dict). Fine for a demo; swap for Redis in production.
-"""
 from __future__ import annotations
 
 import hashlib
@@ -24,14 +12,9 @@ from threading import Lock
 import joblib
 import numpy as np
 
-# Trained behavioral uplift model (ml/src/live_model.py) — the causal brain that
-# scores live shoppers. Loaded lazily; falls back to heuristics if absent.
 _LIVE_PATH = Path(__file__).resolve().parents[1] / "ml" / "artifacts" / "live_uplift.joblib"
 _LIVE_MODEL = None
-# Live shoppers currently being scored — surfaced to the marketer analytics so the
-# storefront and the dashboard are visibly one connected product.
 LIVE_SHOPPERS: dict[str, dict] = {}
-
 
 def _live_model():
     global _LIVE_MODEL
@@ -42,36 +25,27 @@ def _live_model():
             _LIVE_MODEL = {}
     return _LIVE_MODEL
 
-# ---- The catalogue the storefront renders (a health & beauty retailer, the kind
-# of brand that actually runs on Epsilon). Each item carries price/rating/blurb so
-# the store looks real and the scorer knows value. ----
 PRODUCTS = [
-    # Women
     {"id": "p1", "name": "Floral Wrap Dress", "price": 79, "cat": "Women", "emoji": "👗", "rating": 4.7, "blurb": "Flowy midi, breathable viscose"},
     {"id": "p2", "name": "Tailored Blazer", "price": 129, "cat": "Women", "emoji": "🧥", "rating": 4.6, "blurb": "Structured, office-to-evening"},
     {"id": "p3", "name": "Silk Blouse", "price": 69, "cat": "Women", "emoji": "👚", "rating": 4.5, "blurb": "Mulberry silk, relaxed fit"},
     {"id": "p4", "name": "High-Rise Jeans", "price": 89, "cat": "Women", "emoji": "👖", "rating": 4.7, "blurb": "Sculpting stretch denim"},
-    # Men
     {"id": "p5", "name": "Slim-Fit Chinos", "price": 69, "cat": "Men", "emoji": "👖", "rating": 4.6, "blurb": "All-day comfort cotton twill"},
     {"id": "p6", "name": "Linen Shirt", "price": 59, "cat": "Men", "emoji": "👔", "rating": 4.5, "blurb": "Breathable, summer-ready"},
     {"id": "p7", "name": "Bomber Jacket", "price": 149, "cat": "Men", "emoji": "🧥", "rating": 4.8, "blurb": "Water-resistant, ribbed cuffs"},
     {"id": "p8", "name": "Graphic Tee", "price": 29, "cat": "Men", "emoji": "👕", "rating": 4.4, "blurb": "Soft combed cotton"},
-    # Shoes
     {"id": "p9", "name": "Leather Sneakers", "price": 119, "cat": "Shoes", "emoji": "👟", "rating": 4.7, "blurb": "Minimal, full-grain leather"},
     {"id": "p10", "name": "Chelsea Boots", "price": 159, "cat": "Shoes", "emoji": "🥾", "rating": 4.6, "blurb": "Suede, elastic side panels"},
     {"id": "p11", "name": "Strappy Heels", "price": 99, "cat": "Shoes", "emoji": "👠", "rating": 4.4, "blurb": "85mm, cushioned sole"},
     {"id": "p12", "name": "Running Shoes", "price": 109, "cat": "Shoes", "emoji": "👟", "rating": 4.8, "blurb": "Responsive foam, lightweight"},
-    # Bags
     {"id": "p13", "name": "Leather Tote", "price": 189, "cat": "Bags", "emoji": "👜", "rating": 4.8, "blurb": "Full-grain, fits a 15\" laptop"},
     {"id": "p14", "name": "Mini Crossbody", "price": 89, "cat": "Bags", "emoji": "👛", "rating": 4.6, "blurb": "Adjustable strap, gold hardware"},
     {"id": "p15", "name": "Canvas Backpack", "price": 79, "cat": "Bags", "emoji": "🎒", "rating": 4.5, "blurb": "Water-repellent, padded straps"},
     {"id": "p16", "name": "Weekender Duffel", "price": 139, "cat": "Bags", "emoji": "🧳", "rating": 4.7, "blurb": "Cabin-size, shoe compartment"},
-    # Accessories
     {"id": "p17", "name": "Aviator Sunglasses", "price": 129, "cat": "Accessories", "emoji": "🕶️", "rating": 4.6, "blurb": "Polarized, UV400"},
     {"id": "p18", "name": "Silk Scarf", "price": 49, "cat": "Accessories", "emoji": "🧣", "rating": 4.5, "blurb": "Hand-rolled edges, print"},
     {"id": "p19", "name": "Classic Watch", "price": 199, "cat": "Accessories", "emoji": "⌚", "rating": 4.8, "blurb": "Sapphire glass, leather strap"},
     {"id": "p20", "name": "Statement Earrings", "price": 39, "cat": "Accessories", "emoji": "💎", "rating": 4.4, "blurb": "18k gold-plated, hypoallergenic"},
-    # Activewear
     {"id": "p21", "name": "Performance Hoodie", "price": 79, "cat": "Activewear", "emoji": "🧥", "rating": 4.7, "blurb": "Moisture-wicking, four-way stretch"},
     {"id": "p22", "name": "Training Shorts", "price": 35, "cat": "Activewear", "emoji": "🩳", "rating": 4.5, "blurb": "Lightweight, zip pocket"},
     {"id": "p23", "name": "Yoga Leggings", "price": 55, "cat": "Activewear", "emoji": "🧘", "rating": 4.8, "blurb": "High-rise, squat-proof"},
@@ -79,9 +53,6 @@ PRODUCTS = [
 ]
 PRODUCT_BY_ID = {p["id"]: p for p in PRODUCTS}
 CATEGORIES = ["Women", "Men", "Shoes", "Bags", "Accessories", "Activewear"]
-# The orchestratable channel portfolio. Each carries a real send cost (USD) and the
-# latency at which it reaches the customer — the orchestrator trades reach vs. cost
-# vs. immediacy, not just "email everyone".
 CHANNELS = ["Email", "Push", "SMS", "WhatsApp", "In-App", "Web Push", "Retargeting Ad",
             "Wallet Pass", "Live Concierge", "Voice Assistant", "QR Re-engage", "Smart Mirror"]
 CHANNEL_META = {
@@ -92,23 +63,15 @@ CHANNEL_META = {
     "In-App":         {"cost": 0.01, "latency": "live",     "immediacy": 5, "icon": "📲", "kind": "on-site"},
     "Web Push":       {"cost": 0.02, "latency": "instant",  "immediacy": 4, "icon": "🌐", "kind": "off-site"},
     "Retargeting Ad": {"cost": 0.12, "latency": "hours",    "immediacy": 1, "icon": "🎯", "kind": "ambient"},
-    # Creative additions — each fits a distinct moment a generic blast can't reach:
-    "Wallet Pass":    {"cost": 0.03, "latency": "instant",  "immediacy": 3, "icon": "🎟️", "kind": "off-site"},   # offer drops into Apple/Google Wallet, geo-reminds near a store
-    "Live Concierge": {"cost": 0.40, "latency": "live",     "immediacy": 5, "icon": "💁", "kind": "off-site"},   # human/AI stylist chat for high-value loyals — margin-safe, no discount
-    "Voice Assistant":{"cost": 0.06, "latency": "scheduled","immediacy": 2, "icon": "🗣️", "kind": "off-site"},   # "reorder your usual" via Alexa/Google for replenishers
-    "QR Re-engage":   {"cost": 0.01, "latency": "physical", "immediacy": 2, "icon": "📱", "kind": "ambient"},    # QR on receipt/packaging links back to their saved bag
-    "Smart Mirror":   {"cost": 0.02, "latency": "in-store", "immediacy": 4, "icon": "🪞", "kind": "in-store"},   # in-store fitting-room screen recognises the CORE-ID and shows their wishlist
+    "Wallet Pass":    {"cost": 0.03, "latency": "instant",  "immediacy": 3, "icon": "🎟️", "kind": "off-site"},
+    "Live Concierge": {"cost": 0.40, "latency": "live",     "immediacy": 5, "icon": "💁", "kind": "off-site"},
+    "Voice Assistant":{"cost": 0.06, "latency": "scheduled","immediacy": 2, "icon": "🗣️", "kind": "off-site"},
+    "QR Re-engage":   {"cost": 0.01, "latency": "physical", "immediacy": 2, "icon": "📱", "kind": "ambient"},
+    "Smart Mirror":   {"cost": 0.02, "latency": "in-store", "immediacy": 4, "icon": "🪞", "kind": "in-store"},
 }
 
-
-# ---------------------------------------------------------------------------
-# Product enrichment: badges, sale prices, descriptions, and customer reviews.
-# Everything is generated deterministically from the product id so the catalogue
-# is stable across reloads without us hand-writing 24 detail pages.
-# ---------------------------------------------------------------------------
 _BADGES = [None, "Best Seller", "Sale", "New", "Staff Pick", None, "Sale"]
 
-# Every product carries one of these offers (the brief: highlight offers everywhere).
 OFFERS = [
     {"label": "20% OFF", "kind": "discount", "pct": 20},
     {"label": "15% OFF $35+", "kind": "discount", "pct": 15},
@@ -120,37 +83,34 @@ OFFERS = [
     {"label": "Buy 2 Save 40%", "kind": "bundle", "pct": 0},
 ]
 
-# Exact per-product photos (curated, verified Unsplash stills) so every card shows the
-# ACTUAL item, not a generic category shot. Graceful emoji fallback in the UI on error.
 _UNSPLASH = "https://images.unsplash.com/photo-{id}?auto=format&fit=crop&w=600&h=600&q=72"
 PRODUCT_IMG = {
-    "p1":  "1572804013309-59a88b7e92f1",   # floral dress
-    "p2":  "1594633312681-425c7b97ccd1",   # tailored blazer
-    "p3":  "1564257631407-4deb1f99d992",   # silk blouse
-    "p4":  "1542272604-787c3835535d",      # high-rise jeans
-    "p5":  "1473966968600-fa801b869a1a",   # chinos
-    "p6":  "1602810318383-e386cc2a3ccf",   # linen shirt
-    "p7":  "1551028719-00167b16eac5",      # bomber jacket
-    "p8":  "1521572163474-6864f9cf17ab",   # graphic tee
-    "p9":  "1549298916-b41d501d3772",      # leather sneakers
-    "p10": "1638247025967-b4e38f787b76",   # chelsea boots
-    "p11": "1543163521-1bf539c55dd2",      # strappy heels
-    "p12": "1542291026-7eec264c27ff",      # running shoes
-    "p13": "1584917865442-de89df76afd3",   # leather tote
-    "p14": "1548036328-c9fa89d128fa",      # mini crossbody
-    "p15": "1553062407-98eeb64c6a62",      # canvas backpack
-    "p16": "1547949003-9792a18a2601",      # weekender duffel
-    "p17": "1572635196237-14b3f281503f",   # aviator sunglasses
-    "p18": "1601924994987-69e26d50dc26",   # silk scarf
-    "p19": "1523275335684-37898b6baf30",   # classic watch
-    "p20": "1535632066927-ab7c9ab60908",   # statement earrings
-    "p21": "1556821840-3a63f95609a7",      # performance hoodie
-    "p22": "1591195853828-11db59a44f6b",   # training shorts
-    "p23": "1552286450-4a669f880062",      # yoga leggings
-    "p24": "1588850561407-ed78c282e89b",   # baseball cap
+    "p1":  "1572804013309-59a88b7e92f1",
+    "p2":  "1594633312681-425c7b97ccd1",
+    "p3":  "1564257631407-4deb1f99d992",
+    "p4":  "1542272604-787c3835535d",
+    "p5":  "1473966968600-fa801b869a1a",
+    "p6":  "1602810318383-e386cc2a3ccf",
+    "p7":  "1551028719-00167b16eac5",
+    "p8":  "1521572163474-6864f9cf17ab",
+    "p9":  "1549298916-b41d501d3772",
+    "p10": "1638247025967-b4e38f787b76",
+    "p11": "1543163521-1bf539c55dd2",
+    "p12": "1542291026-7eec264c27ff",
+    "p13": "1584917865442-de89df76afd3",
+    "p14": "1548036328-c9fa89d128fa",
+    "p15": "1553062407-98eeb64c6a62",
+    "p16": "1547949003-9792a18a2601",
+    "p17": "1572635196237-14b3f281503f",
+    "p18": "1601924994987-69e26d50dc26",
+    "p19": "1523275335684-37898b6baf30",
+    "p20": "1535632066927-ab7c9ab60908",
+    "p21": "1556821840-3a63f95609a7",
+    "p22": "1591195853828-11db59a44f6b",
+    "p23": "1552286450-4a669f880062",
+    "p24": "1588850561407-ed78c282e89b",
 }
 
-# Scrolling top-strip promos.
 TICKER = [
     "Up to 30% OFF new-season styles",
     "Buy 1 Get 1 50% OFF on tees",
@@ -161,7 +121,6 @@ TICKER = [
     "Members get early access to the drop",
 ]
 
-# Combo bundles — buy together, save more.
 BUNDLES = [
     {"id": "b1", "name": "Weekend Getaway Edit", "emoji": "🧳", "pct": 25,
      "items": ["p16", "p6", "p17"], "blurb": "Duffel + Linen Shirt + Sunglasses"},
@@ -173,7 +132,6 @@ BUNDLES = [
      "items": ["p1", "p11", "p14"], "blurb": "Wrap Dress + Heels + Crossbody"},
 ]
 
-# Clip-style coupons (myAura exclusives).
 COUPONS = [
     {"id": "cp1", "amount": "$15", "desc": "Off $75+ on dresses & tops", "tag": "myAura exclusive", "expires": "tomorrow"},
     {"id": "cp2", "amount": "$10", "desc": "Buy 2+ accessories", "tag": "myAura exclusive", "expires": "3 days"},
@@ -182,7 +140,6 @@ COUPONS = [
     {"id": "cp5", "amount": "$8", "desc": "Activewear orders $40+", "tag": "myAura exclusive", "expires": "2 days"},
 ]
 
-# Points redemption catalogue — use points later, incl. partner rewards.
 REDEMPTIONS = [
     {"id": "rd1", "name": "$5 off your order", "cost": 125, "icon": "🏷️", "partner": "aura"},
     {"id": "rd2", "name": "Free shipping", "cost": 50, "icon": "🚚", "partner": "aura"},
@@ -208,14 +165,10 @@ _MIXED_REVIEWS = [
     ("Pretty good", "Works well for me, though results may vary. Would still recommend giving it a try."),
 ]
 
-
 def _seed(pid: str) -> int:
     return int(hashlib.md5(pid.encode()).hexdigest(), 16)
 
-
 def enrich(p: dict) -> dict:
-    """Add an offer, sale price, image, badge and social-proof to a catalogue card.
-    Every product gets an offer (per the brief)."""
     s = _seed(p["id"])
     offer = OFFERS[s % len(OFFERS)]
     pct = offer["pct"]
@@ -228,7 +181,6 @@ def enrich(p: dict) -> dict:
             "img": img,
             "badge": badge, "reviews_count": 40 + s % 960, "stock": 4 + s % 50}
 
-
 def bundles_detail() -> list[dict]:
     out = []
     for b in BUNDLES:
@@ -239,11 +191,9 @@ def bundles_detail() -> list[dict]:
                     "saves": round(total - price, 2)})
     return out
 
-
 def promotions() -> dict:
     return {"ticker": TICKER, "bundles": bundles_detail(),
             "coupons": COUPONS, "redemptions": REDEMPTIONS}
-
 
 def reviews_for(p: dict) -> list[dict]:
     rng = random.Random(_seed(p["id"]))
@@ -265,7 +215,6 @@ def reviews_for(p: dict) -> list[dict]:
         })
     return out
 
-
 def _description(p: dict) -> str:
     benefits = {
         "Vitamins": "supports your daily wellness with clinically-studied ingredients",
@@ -278,7 +227,6 @@ def _description(p: dict) -> str:
     return (f"The {p['name']} {benefits.get(p['cat'], 'is made to a high standard')}. "
             f"{p['blurb']}. Free shipping on orders over $35, and easy 30-day returns.")
 
-
 def product_detail(pid: str) -> dict | None:
     p = PRODUCT_BY_ID.get(pid)
     if not p:
@@ -290,42 +238,35 @@ def product_detail(pid: str) -> dict | None:
     return {**enrich(p), "description": _description(p),
             "reviews": revs, "rating_breakdown": breakdown}
 
-
 def catalogue_cards() -> list[dict]:
     return [enrich(p) for p in PRODUCTS]
 
-
-# Loyalty: points earned per interaction, and the tier ladder.
 POINTS_PER = {"view_product": 2, "view_detail": 3, "view_reviews": 3,
               "view_all_reviews": 4, "add_to_wishlist": 5, "add_to_cart": 10,
               "apply_coupon": 6, "view_size_guide": 4, "compare": 5,
               "checkout_start": 20, "purchase": 50}
 
-# Intent weight per event type — how strongly each behaviour signals real purchase
-# intent (vs. idle browsing). These drive the live intent meter AND are the richer
-# behavioural signal the more events we capture, the sharper the read on the shopper.
 INTENT_WEIGHT = {
     "view_product": 3, "view_detail": 6, "view_image_zoom": 5, "view_reviews": 8,
-    "view_all_reviews": 12,            # reading EVERY review = strong buying research
+    "view_all_reviews": 12,
     "sort_reviews": 6, "view_size_guide": 11, "check_delivery": 9, "compare": 10,
     "add_to_wishlist": 14, "apply_coupon": 16, "clip_coupon": 7, "view_bundle": 9,
-    "add_to_cart": 22, "checkout_start": 34, "purchase": 0,   # purchase ends the funnel
+    "add_to_cart": 22, "checkout_start": 34, "purchase": 0,
     "search": 4, "filter_category": 2, "remove_from_cart": -10, "back_to_browse": -3,
 }
 TIERS = [("Bronze", 0), ("Silver", 80), ("Gold", 200), ("Platinum", 400)]
-
 
 @dataclass
 class Visitor:
     uid: str
     events: list = field(default_factory=list)
-    devices: list = field(default_factory=list)        # ordered, unique
+    devices: list = field(default_factory=list)
     cart: list = field(default_factory=list)
     wishlist: list = field(default_factory=list)
-    orders: list = field(default_factory=list)         # completed purchases
-    total_spent: float = 0.0                           # lifetime revenue from this visitor
-    inbox: list = field(default_factory=list)          # targeted messages "delivered"
-    ended: bool = False                                # session ended -> off-site marketing allowed
+    orders: list = field(default_factory=list)
+    total_spent: float = 0.0
+    inbox: list = field(default_factory=list)
+    ended: bool = False
     points: int = 0
     created: float = field(default_factory=time.time)
 
@@ -333,13 +274,9 @@ class Visitor:
         if device and device not in self.devices:
             self.devices.append(device)
 
-
-# Live, in-memory revenue ledger — every real checkout writes here so the analytics
-# dashboard can show revenue updating in real time as shoppers buy.
 REVENUE = {"orders": 0, "gross": 0.0, "incentive_given": 0.0, "units": 0,
            "by_category": defaultdict(float), "by_segment": defaultdict(float),
            "recent": []}
-
 
 def loyalty(points: int) -> dict:
     tier, idx = TIERS[0][0], 0
@@ -355,8 +292,7 @@ def loyalty(points: int) -> dict:
         nxt_name, progress, to_next = "—", 100, 0
     return {"points": points, "tier": tier, "next_tier": nxt_name,
             "to_next": to_next, "progress_pct": min(progress, 100),
-            "dollar_value": round(points * 0.04, 2)}   # 100 pts ≈ $4
-
+            "dollar_value": round(points * 0.04, 2)}
 
 class Store:
     def __init__(self):
@@ -372,7 +308,7 @@ class Store:
     def track(self, uid: str, event: dict) -> Visitor:
         v = self.visitor(uid)
         with self._lock:
-            v.ended = False                          # any activity = the session is live again
+            v.ended = False
             earned = POINTS_PER.get(event.get("type"), 0)
             v.points += earned
             event = {**event, "ts": time.time(), "points_earned": earned}
@@ -391,9 +327,6 @@ class Store:
         return v
 
     def purchase(self, uid: str, applied_points: int = 0) -> dict:
-        """Turn the visitor's cart into a real order: compute the total at sale price,
-        optionally burn loyalty points, record revenue, award points, clear the cart.
-        This is what moves the live revenue numbers on the analytics dashboard."""
         v = self.visitor(uid)
         with self._lock:
             items = [enrich(PRODUCT_BY_ID[c]) for c in v.cart if c in PRODUCT_BY_ID]
@@ -401,8 +334,7 @@ class Store:
                 return {"ok": False, "error": "cart is empty"}
             list_total = round(sum(i["list_price"] for i in items), 2)
             sale_total = round(sum(i["sale_price"] for i in items), 2)
-            incentive = round(list_total - sale_total, 2)         # discounts given away
-            # Points can be redeemed for cash off (100 pts ≈ $4); never below $0.
+            incentive = round(list_total - sale_total, 2)
             applied_points = max(0, min(applied_points, v.points))
             points_value = round(applied_points * 0.04, 2)
             grand_total = max(0.0, round(sale_total - points_value, 2))
@@ -425,7 +357,6 @@ class Store:
             v.events.append({"type": "purchase", "order_id": order["order_id"],
                              "value": grand_total, "ts": time.time(), "points_earned": earned})
 
-            # Update the global live revenue ledger.
             REVENUE["orders"] += 1
             REVENUE["gross"] = round(REVENUE["gross"] + grand_total, 2)
             REVENUE["incentive_given"] = round(REVENUE["incentive_given"] + incentive, 2)
@@ -440,8 +371,6 @@ class Store:
         return {"ok": True, "order": order, "loyalty": loyalty(v.points)}
 
     def end_session(self, uid: str, device: str = "desktop") -> dict:
-        """The shopper left. NOW it makes sense to market: pick the off-site channel and
-        deliver the one message worth sending into their inbox (or stay silent)."""
         v = self.visitor(uid)
         v.ended = True
         delivered = deliver_to_inbox(v, device)
@@ -463,13 +392,8 @@ class Store:
                              "cost": reward["cost"], "ts": time.time(), "points_earned": 0})
         return {"ok": True, "reward": reward, "loyalty": loyalty(v.points)}
 
-
 STORE = Store()
 
-
-# ----------------------------------------------------------------------------
-# Live intent scoring + next-best-action
-# ----------------------------------------------------------------------------
 def _product_view_counts(v: Visitor) -> dict[str, int]:
     counts: dict[str, int] = defaultdict(int)
     for e in v.events:
@@ -477,9 +401,7 @@ def _product_view_counts(v: Visitor) -> dict[str, int]:
             counts[e["product_id"]] += 1
     return counts
 
-
 def visitor_features(v: Visitor) -> np.ndarray:
-    """Build the behavioral feature vector the uplift model expects."""
     views = _product_view_counts(v)
     total = sum(views.values())
     distinct = len(views)
@@ -487,14 +409,11 @@ def visitor_features(v: Visitor) -> np.ndarray:
     dwell_min = sum(e.get("dwell_ms", 0) for e in v.events) / 60000.0
     reviews = sum(1 for e in v.events if e.get("type") == "view_reviews")
     prior = sum(1 for e in v.events if e.get("type") == "checkout")
-    recency = 0.5                       # active session = very recent
+    recency = 0.5
     return np.array([[total, distinct, top, dwell_min, len(v.wishlist),
                       len(v.cart), reviews, prior, recency]], dtype=float)
 
-
 def score_visitor(v: Visitor) -> dict | None:
-    """Run the trained uplift model on the live shopper → real CATE + bucket.
-    Returns None if the model isn't available (then callers use heuristics)."""
     m = _live_model()
     if not m:
         return None
@@ -514,11 +433,7 @@ def score_visitor(v: Visitor) -> dict | None:
             "bucket": bucket, "inc_value": round(max(uplift, 0) * m["aov"], 2),
             "scored_by": "T-Learner uplift model (9 behavioral features)"}
 
-
 def product_interests(v: Visitor, top_n: int = 3) -> list[dict]:
-    """The shopper's consideration set: the top N products they're actually weighing,
-    each with its OWN intent signal. A real shopper compares several items at once —
-    Conductor tracks per-product intent instead of collapsing it to a single 'top' item."""
     stats: dict[str, dict] = {}
     for e in v.events:
         pid = e.get("product_id")
@@ -546,14 +461,7 @@ def product_interests(v: Visitor, top_n: int = 3) -> list[dict]:
     out.sort(key=lambda x: (-x["intent"], not x["in_cart"], not x["in_wishlist"]))
     return out[:top_n]
 
-
 def _interest_intent(views, dwell_s, reviews, in_cart, in_wish, bought) -> int:
-    """Per-product intent on a 0–100 scale with meaningful bands:
-        bought    -> 100        (the only way to reach 100 — they actually converted)
-        in cart   -> 65–95      (strong purchase intent, but not certainty)
-        wishlist  -> 40–80      (saved for later — real but softer intent)
-        browsing  -> 0–70       (engagement only: views, dwell, reading reviews)
-    Cart always outranks wishlist, which outranks pure browsing."""
     if bought:
         return 100
     engagement = views * 7 + dwell_s * 1.2 + reviews * 9
@@ -563,16 +471,7 @@ def _interest_intent(views, dwell_s, reviews, in_cart, in_wish, bought) -> int:
         return int(min(80, 40 + engagement * 0.4))
     return int(min(70, engagement))
 
-
 def profile(v: Visitor) -> dict:
-    """Turn raw behaviour into a live intent profile + segment.
-
-    Heuristics that mirror the causal buckets:
-      - Repeated views of one item + no purchase  → hesitating  → Persuadable
-      - Added to cart but didn't checkout         → high intent → Persuadable (hot)
-      - Lots of browsing, many items, no focus     → exploring   → Lost/early
-      - Bounced quickly                            → low intent
-    """
     views = _product_view_counts(v)
     total_views = sum(views.values())
     top_pid = max(views, key=views.get) if views else None
@@ -584,12 +483,10 @@ def profile(v: Visitor) -> dict:
     checked_out = any(e.get("type") == "checkout" for e in v.events)
     dwell = sum(e.get("dwell_ms", 0) for e in v.events) / 1000.0
 
-    # Intent score 0..100 — richer engagement = stronger signal (UX meter only).
     score = min(100, total_views * 5 + top_views * 9 + opened_detail * 6
                 + read_reviews * 8 + (30 if has_cart else 0) + (22 if has_wish else 0)
                 + min(dwell, 25))
 
-    # The SEGMENT is decided by the trained causal uplift model (not heuristics).
     model = score_visitor(v)
     INTENT_TEXT = {
         "Persuadable": "Engaged, not yet bought — a nudge changes the outcome",
@@ -603,7 +500,7 @@ def profile(v: Visitor) -> dict:
         segment, intent = "Converted", "Purchased"
     elif model:
         segment, intent = model["bucket"], INTENT_TEXT[model["bucket"]]
-    else:                                   # heuristic fallback if model missing
+    else:
         if has_cart or has_wish or top_views >= 3:
             segment, intent = "Persuadable", "Hesitating on one item"
         elif total_views >= 5:
@@ -621,20 +518,18 @@ def profile(v: Visitor) -> dict:
         "total_views": total_views,
         "top_product": enrich(PRODUCT_BY_ID[top_pid]) if top_pid else None,
         "top_views": top_views,
-        "interests": product_interests(v),          # full consideration set, per-product intent
+        "interests": product_interests(v),
         "cart": [enrich(PRODUCT_BY_ID[c]) for c in v.cart if c in PRODUCT_BY_ID],
         "wishlist": [enrich(PRODUCT_BY_ID[c]) for c in v.wishlist if c in PRODUCT_BY_ID],
         "devices": v.devices,
         "events": len(v.events),
         "dwell_s": round(dwell, 1),
         "loyalty": loyalty(v.points),
-        # Real causal numbers from the uplift model (None until there's signal).
         "uplift": model["uplift"] if model else None,
         "base_rate": model["base_rate"] if model else None,
         "inc_value": model["inc_value"] if model else None,
         "scored_by": model["scored_by"] if model else "heuristic",
     }
-    # Surface this live shopper to the marketer analytics (one connected product).
     if v.events and model:
         LIVE_SHOPPERS[v.uid] = {
             "uid": v.uid, "bucket": segment, "base_rate": model["base_rate"],
@@ -645,28 +540,15 @@ def profile(v: Visitor) -> dict:
         }
     return out
 
-
 def best_channel_for_device(device: str) -> str:
     return {"mobile": "Push", "tablet": "WhatsApp"}.get(device, "Email")
 
-
 def orchestrate_channel(v: "Visitor", device: str, segment: str) -> dict:
-    """Pick the right channel — and crucially, the right TIME — from the portfolio.
-
-    The governing rule: you don't email someone who's already on your site. Marketing
-    messages only make sense during INACTIVITY (after the session ends). So:
-      - On-site & active   -> In-App only (nudge in the moment, zero inbox spam)
-      - Session ended, mobile-first   -> Push (owned, instant, cheap re-engagement)
-      - Session ended, desktop-first  -> Email (rich content once they've left)
-      - Session ended, cross-device   -> WhatsApp (rich async)
-      - Lost Cause who left            -> Retargeting Ad (ambient, no inbox cost)
-    Returns the channel + why + whether it's an on-site or off-site touch.
-    """
     ended = getattr(v, "ended", False)
     seconds_idle = time.time() - (v.events[-1]["ts"] if v.events else time.time())
     live_now = (not ended) and seconds_idle < 30
     cart_value = sum(enrich(PRODUCT_BY_ID[c])["sale_price"] for c in v.cart if c in PRODUCT_BY_ID)
-    returning = bool(v.orders) or v.points >= 200            # loyal / high-value
+    returning = bool(v.orders) or v.points >= 200
 
     if live_now:
         ch, why, when = "In-App", "shopper is live on the site — nudge in the moment, not the inbox", "on-site"
@@ -686,22 +568,17 @@ def orchestrate_channel(v: "Visitor", device: str, segment: str) -> dict:
     return {"channel": ch, "icon": meta["icon"], "cost": meta["cost"],
             "latency": meta["latency"], "why": why, "timing": when}
 
-
 def _product_link(p: dict | None) -> str | None:
-    """Deep-link to the product so the message lands the shopper straight on the page,
-    before the intent decays."""
     return f"/store?p={p['id']}" if p else "/store"
 
-
 def next_best_action(v: Visitor, device: str) -> dict:
-    """The recommendation surfaced to the visitor on a (new) device."""
     p = profile(v)
     seg = p["segment"]
     orch = orchestrate_channel(v, device, seg)
     channel = orch["channel"]
     top = p["top_product"]
     lty = p["loyalty"]
-    member = lty["points"] >= 80                       # Silver+ = engaged member
+    member = lty["points"] >= 80
     interests = p.get("interests") or []
     base = {"channel": channel, "channel_icon": orch["icon"], "channel_why": orch["why"],
             "channel_cost": orch["cost"], "link": _product_link(top), "product": top,
@@ -714,7 +591,6 @@ def next_best_action(v: Visitor, device: str) -> dict:
                 "rationale": "Already converted — marketing would be wasted."}
 
     if seg in ("Persuadable",):
-        # Speak to the whole consideration set, not just the single top item.
         names = [i["name"] for i in interests[:3]]
         if len(names) >= 2:
             item = ", ".join(names[:-1]) + f" & {names[-1]}"
@@ -722,7 +598,6 @@ def next_best_action(v: Visitor, device: str) -> dict:
             item = names[0]
         else:
             item = top["name"] if top else "the items you viewed"
-        # Minimum Effective Dose: right-size the discount instead of blasting a flat 20%.
         med = min_effective_discount(p.get("base_rate"), p.get("uplift"), p.get("intent_score"))
         disc = med["discount"]
         if disc == 0:
@@ -752,8 +627,6 @@ def next_best_action(v: Visitor, device: str) -> dict:
         }
 
     if seg == "Sure Thing":
-        # The clever move: reward loyalty instead of discounting. Margin protected,
-        # customer still delighted.
         return {**base, "recommend": True, "segment": seg,
                 "headline": "A thank-you, not a discount 🎁",
                 "message": f"Earn 2× loyalty points on today's order — you're {lty['to_next']} pts "
@@ -774,8 +647,6 @@ def next_best_action(v: Visitor, device: str) -> dict:
             "message": "Not enough signal yet — keep browsing.",
             "rationale": "Need more behaviour before acting."}
 
-
-# Generic blasts the OLD way (no targeting) fires at everyone, all the time.
 TRADITIONAL_BLASTS = [
     {"channel": "Email", "subject": "🔥 50% OFF EVERYTHING — TODAY ONLY!", "preview": "Shop the mega sale before it's gone. Hurry!", "tag": "batch · all 2.4M users"},
     {"channel": "SMS", "subject": "FLASH SALE ends at MIDNIGHT ⏰", "preview": "Reply STOP to opt out", "tag": "batch · all 2.4M users"},
@@ -783,13 +654,7 @@ TRADITIONAL_BLASTS = [
     {"channel": "Push", "subject": "We miss you 😢 come back!", "preview": "Here's a coupon, just for you (and everyone)", "tag": "batch · all 2.4M users"},
 ]
 
-
 def mail_simulation(v: Visitor, device: str) -> dict:
-    """Contrast the two worlds for the demo:
-      conductor  — at most ONE message, chosen by causal intent, perfectly timed
-                   (or deliberate silence when contact wouldn't change the outcome).
-      traditional — the same generic promo blasts everyone gets regardless of behaviour.
-    """
     p = profile(v)
     nba = next_best_action(v, device)
     top = p["top_product"]
@@ -834,34 +699,19 @@ def mail_simulation(v: Visitor, device: str) -> dict:
         },
     }
 
-
-# ---------------------------------------------------------------------------
-# Live behavioural pattern detection — runs continuously over the whole session,
-# not once. Every new event can flip or strengthen a pattern, so the console keeps
-# learning as the shopper acts.
-# ---------------------------------------------------------------------------
-AOV = 92.0          # fashion average order value, for economics projections
-DISCOUNT = 0.20     # a typical blanket "20% off" campaign offer
-COGS = 0.55         # cost of goods as a fraction of price (fashion gross margin ~45%)
-
+AOV = 92.0
+DISCOUNT = 0.20
+COGS = 0.55
 
 def min_effective_discount(base_rate, uplift, intent_score) -> dict:
-    """Minimum Effective Dose: the SMALLEST discount that still maximises expected
-    incremental profit for this shopper — instead of reflexively blasting a flat 20%.
-
-    We model conversion as a function of discount depth (rising, with diminishing
-    returns), compute expected per-order margin at each tier, and pick the profit-
-    maximising tier. The headline number is the margin gained versus defaulting to 20%.
-    """
     import math
     base = base_rate if base_rate is not None else 0.12
     up = max(uplift or 0.0, 0.0)
-    # how responsive this shopper is to a discount (more persuadable + higher intent = more)
     sens = min(0.85, max(0.05, up * 1.8 + (intent_score or 0) / 250))
     rows = []
     for d in (0, 5, 10, 15, 20, 25):
         p = min(0.98, base + up * 0.4 + sens * (1 - math.exp(-d / 11)))
-        margin_per = AOV * (1 - d / 100) - AOV * COGS        # margin kept per converted order
+        margin_per = AOV * (1 - d / 100) - AOV * COGS
         rows.append({"discount": d, "conv_prob": round(p, 3),
                      "exp_profit": round(p * margin_per, 2)})
     best = max(rows, key=lambda r: r["exp_profit"])
@@ -873,7 +723,6 @@ def min_effective_discount(base_rate, uplift, intent_score) -> dict:
         "curve": rows,
     }
 
-
 def _categories_viewed(v: Visitor) -> dict[str, int]:
     cats: dict[str, int] = defaultdict(int)
     for e in v.events:
@@ -883,10 +732,7 @@ def _categories_viewed(v: Visitor) -> dict[str, int]:
                 cats[p["cat"]] += 1
     return cats
 
-
 def detect_patterns(v: Visitor) -> list[dict]:
-    """Surface the behavioural patterns we can see RIGHT NOW. Persistent: this is a
-    pure function of the full event history, so it keeps updating every interaction."""
     views = _product_view_counts(v)
     top_pid = max(views, key=views.get) if views else None
     top_views = views.get(top_pid, 0) if top_pid else 0
@@ -920,13 +766,8 @@ def detect_patterns(v: Visitor) -> list[dict]:
         add("lingering", "Lingering", f"{int(dwell)}s dwell — strong consideration signal", "up", "⏳")
     return out
 
-
 def detect_bundle(v: Visitor) -> dict | None:
-    """When a shopper shows interest across multiple products, dynamically assemble a
-    personalised bundle and price the discount by CAUSAL segment — deep only where it
-    changes the outcome, points-only for Sure Things, nothing for Sleeping Dogs."""
     views = _product_view_counts(v)
-    # Rank candidate products: cart + wishlist first, then most-viewed.
     ranked: list[str] = []
     for pid in v.cart + v.wishlist + sorted(views, key=views.get, reverse=True):
         if pid in PRODUCT_BY_ID and pid not in ranked:
@@ -938,7 +779,7 @@ def detect_bundle(v: Visitor) -> dict | None:
 
     seg = profile(v)["segment"]
     if seg == "Sleeping Dog":
-        return None                                  # contact backfires — no bundle push
+        return None
     pct, kind, rationale = {
         "Persuadable": (18, "discount", "Multi-item interest + a nudge changes the outcome — worth a real bundle discount."),
         "Sure Thing":  (8,  "points",   "Would buy anyway — keep margin: small bundle saving + 2× points, not a deep cut."),
@@ -954,25 +795,18 @@ def detect_bundle(v: Visitor) -> dict | None:
         "rationale": rationale,
     }
 
-
 def session_economics(v: Visitor) -> dict:
-    """Persistent, accumulating two-world economics for THIS shopper. Grows with every
-    event, so the console shows the gap widening live (projected, clearly labelled)."""
     n = len(v.events)
     p = profile(v)
     seg = p["segment"]
     nba = next_best_action(v, v.devices[-1] if v.devices else "desktop")
     patterns = {pat["code"] for pat in detect_patterns(v)}
 
-    # Traditional: blasts on a cadence regardless of behaviour; discounts everyone it
-    # targets (incl. Sure Things who'd pay full price), and fatigue rises with volume.
     trad_msgs = 1 + n // 3
     trad_incentive = AOV * DISCOUNT if seg in ("Sure Thing", "Persuadable") else 0.0
     trad_budget = round(trad_msgs * 0.12 + trad_incentive, 2)
     trad_annoy = min(95, trad_msgs * 9)
 
-    # Conductor: at most one timed touch, plus one cart-recovery if abandoning; only
-    # discounts where it actually changes the outcome.
     cond_msgs = (1 if nba.get("recommend") else 0) + (1 if "cart_abandon" in patterns else 0)
     gives_discount = "discount" in str(nba.get("reward_type", ""))
     cond_incentive = AOV * 0.15 if (gives_discount and seg == "Persuadable") else 0.0
@@ -991,22 +825,17 @@ def session_economics(v: Visitor) -> dict:
         "basis": "projected per-shopper economics",
     }
 
-
 def session_end_mail(v: Visitor, device: str) -> dict | None:
-    """Build the one message worth sending now that the shopper has LEFT. We almost
-    always have something useful to say — the single principled silence is the Sleeping
-    Dog, where contact provably backfires. Everyone else gets a fit-for-segment touch."""
     p = profile(v)
     seg = p["segment"]
     if seg == "Sleeping Dog" or not v.events:
-        return None                                  # the deliberate silence
+        return None
 
     nba = next_best_action(v, device)
     orch = orchestrate_channel(v, device, seg)
     top = p["top_product"]
     cart = p["cart"]
 
-    # Persuadable / Sure Thing already have a strong tailored NBA — use it.
     if nba.get("recommend"):
         emoji = top["emoji"] if top else "🛍️"
         return {"channel": nba["channel"], "channel_icon": nba.get("channel_icon", "📧"),
@@ -1016,7 +845,6 @@ def session_end_mail(v: Visitor, device: str) -> dict | None:
                 "product": top, "reward_type": nba.get("reward_type"),
                 "offer_pct": nba.get("offer_pct"), "reason": nba["rationale"]}
 
-    # Just bought: thank them and cross-sell on points — never a discount.
     if seg == "Converted":
         return {"channel": orch["channel"], "channel_icon": orch["icon"],
                 "subject": "🎉 Thanks for your order — here's 2× points",
@@ -1026,8 +854,6 @@ def session_end_mail(v: Visitor, device: str) -> dict | None:
                 "reward_type": "thank-you + cross-sell (no discount)", "offer_pct": None,
                 "reason": "Converted: reward and cross-sell on points — no discount needed."}
 
-    # Lost Cause / low-signal: a LIGHT win-back is still worth a cheap off-site touch —
-    # no deep discount (intent is low), but we keep the door open.
     if cart:
         subj = f"🛍️ You left {len(cart)} item{'s' if len(cart) > 1 else ''} in your bag"
         body = "Your bag is saved and your points are waiting — finish whenever you're ready."
@@ -1045,11 +871,7 @@ def session_end_mail(v: Visitor, device: str) -> dict | None:
             "reward_type": "light win-back (no discount)", "offer_pct": None,
             "reason": f"{seg}: low live intent, but a cheap {orch['channel']} touch keeps the door open without giving away margin."}
 
-
 def deliver_to_inbox(v: Visitor, device: str) -> list[dict]:
-    """Deliver the session-end message into the shopper's inbox. Fires on (almost)
-    every session end — only guards against an accidental double-fire within ~1.5s.
-    Returns the inbox newest-first for the email-client view."""
     c = session_end_mail(v, device)
     if c:
         recent = v.inbox and (time.time() - v.inbox[-1]["ts"] < 1.5)
@@ -1062,14 +884,10 @@ def deliver_to_inbox(v: Visitor, device: str) -> list[dict]:
                 "offer_pct": c.get("offer_pct"), "reason": c.get("reason"),
                 "from": "VERVE · The Style Edit", "ts": time.time(), "read": False,
             })
-            del v.inbox[:-12]                        # keep the last dozen
+            del v.inbox[:-12]
     return v.inbox[::-1]
 
-
 def cohort_analytics() -> dict:
-    """Real-time, customer-based analysis across everyone currently in the store —
-    the funnel, the live bucket mix, what's being viewed/bought, and revenue at risk.
-    Recomputed on every call so the analytics view updates as shoppers act."""
     shoppers = list(STORE._v.values())
     visitors = len(shoppers)
     browsed = sum(1 for v in shoppers if v.events)
@@ -1084,7 +902,7 @@ def cohort_analytics() -> dict:
             buckets[profile(v)["segment"]] += 1
         for pid, c in _product_view_counts(v).items():
             views[pid] += c
-        if v.cart and not v.orders:                  # abandoned baskets
+        if v.cart and not v.orders:
             revenue_at_risk += sum(enrich(PRODUCT_BY_ID[c])["sale_price"]
                                    for c in v.cart if c in PRODUCT_BY_ID)
 
@@ -1109,8 +927,6 @@ def cohort_analytics() -> dict:
         "revenue_at_risk": round(revenue_at_risk, 2),
     }
 
-
-# The per-segment marketing playbook — the data-backed "how to market" for each bucket.
 SEGMENT_PLAYBOOK = {
     "Persuadable": {
         "action": "TARGET — spend here", "color": "#3b82f6",
@@ -1142,10 +958,7 @@ SEGMENT_PLAYBOOK = {
     },
 }
 
-
 def strategy_report() -> dict:
-    """A readable, data-backed marketing strategy from the live cohort: the funnel, the
-    segment playbook (with live counts), channel strategy, and prioritised recommendations."""
     co = cohort_analytics()
     funnel, rev, buckets = co["funnel"], co["revenue"], co["buckets"]
     total_seg = sum(buckets.values()) or 1
@@ -1155,18 +968,14 @@ def strategy_report() -> dict:
     sure_n = buckets.get("Sure Thing", 0)
     dog_n = buckets.get("Sleeping Dog", 0)
     pers_n = buckets.get("Persuadable", 0)
-    # If a blanket "discount everyone likely to buy" campaign ran, this is the margin
-    # it would hand to Sure Things who'd have paid full price — the headline waste.
     est_discount_waste = round(sure_n * AOV * DISCOUNT, 2)
-    protected = round(dog_n * AOV * 0.08, 2)            # organic revenue saved by not poking Sleeping Dogs
+    protected = round(dog_n * AOV * 0.08, 2)
 
     segments = []
     for name, pb in SEGMENT_PLAYBOOK.items():
         n = buckets.get(name, 0)
         segments.append({**pb, "segment": name, "count": n, "pct": round(100 * n / total_seg, 1)})
 
-    # Minimum Effective Dose, aggregated over live Persuadables: margin kept by
-    # right-sizing the discount instead of reflexively giving everyone 20%.
     med_margin, depths = 0.0, []
     for v in STORE._v.values():
         if not v.events:
@@ -1214,9 +1023,9 @@ def strategy_report() -> dict:
             "conversion_pct": round(100 * funnel["bought"] / max(funnel["visitors"], 1), 1),
             "revenue": rev["gross"], "aov": rev["aov"], "orders": rev["orders"],
             "revenue_at_risk": co["revenue_at_risk"], "incentive_given": incentive,
-            "incentive_efficiency": incentive_efficiency,      # $ revenue per $ incentive
+            "incentive_efficiency": incentive_efficiency,
             "est_discount_waste_avoided": est_discount_waste,
-            "avg_discount_depth": avg_depth,                   # Minimum Effective Dose
+            "avg_discount_depth": avg_depth,
             "margin_right_sized": med_margin,
         },
         "segments": segments,

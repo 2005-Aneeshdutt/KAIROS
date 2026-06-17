@@ -1,5 +1,3 @@
-"""Build Epsilon Conductor pitch deck (.pptx) with on-brand data visualizations.
-One-off generator; safe to delete after running."""
 import json, os, tempfile
 from pathlib import Path
 import matplotlib
@@ -17,16 +15,14 @@ ROOT = Path(r"c:/Users/anees/OneDrive/Desktop/epsilon")
 ART = ROOT / "ml" / "artifacts"
 ASSETS = Path(tempfile.mkdtemp(prefix="deck_"))
 
-# ---- Palette ----
 BG      = "#0F172A"; PANEL = "#1E293B"; TEXT = "#E2E8F0"; MUTED = "#94A3B8"
-ACCENT  = "#E6007E"   # Epsilon magenta
+ACCENT  = "#E6007E"
 BLUE="#3B82F6"; GREEN="#22C55E"; AMBER="#F59E0B"; RED="#EF4444"
 def H(x): return RGBColor.from_string(x.lstrip("#"))
 
 plt.rcParams.update({"font.family": "DejaVu Sans", "text.color": TEXT,
                      "axes.edgecolor": MUTED, "xtick.color": MUTED, "ytick.color": MUTED})
 
-# ============================ CHARTS ============================
 def save(fig, name):
     p = ASSETS / name
     fig.savefig(p, dpi=200, facecolor=BG, bbox_inches="tight", pad_inches=0.25)
@@ -65,7 +61,6 @@ def chart_rct():
     for i in range(len(order)):
         ax.text(i-w/2,cr[i]+0.04,f"{cr[i]:.2f}%",ha="center",color=TEXT,fontsize=8)
         ax.text(i+w/2,tr[i]+0.04,f"{tr[i]:.2f}%",ha="center",color=TEXT,fontsize=8)
-    # highlight Sleeping Dog reversal
     ax.annotate("contact LOWERS\nconversion",xy=(2+w/2+0.09,0.42),xytext=(2.62,2.05),
         color=AMBER,fontsize=9,fontweight="bold",ha="center",
         arrowprops=dict(arrowstyle="->",color=AMBER,lw=1.6,
@@ -128,7 +123,6 @@ def chart_arch():
             ax.add_patch(FancyArrowPatch((x+bw,1.07),(x+bw+gap,1.07),arrowstyle="-|>",
                 mutation_scale=14,color=MUTED,lw=1.4))
         x+=bw+gap
-    # feedback loop
     ax.add_patch(FancyArrowPatch((centers[-1],0.55),(centers[0],0.55),
         connectionstyle="arc3,rad=0.25",arrowstyle="-|>",mutation_scale=14,color=ACCENT,lw=1.4))
     ax.text((centers[0]+centers[-1])/2,-0.15,"closed feedback loop",ha="center",color=ACCENT,fontsize=9)
@@ -139,7 +133,6 @@ imgs = {"buckets":chart_buckets(),"rct":chart_rct(),"qini":chart_qini(),
         "twoworld":chart_twoworld(),"arch":chart_arch()}
 print("charts done")
 
-# ============================ DECK ============================
 prs=Presentation(); prs.slide_width=Inches(13.333); prs.slide_height=Inches(7.5)
 SW,SH=prs.slide_width,prs.slide_height
 BLANK=prs.slide_layouts[6]
@@ -193,7 +186,6 @@ def placeholder(s,l,t,w,h,label):
     run=p.add_run(); run.text="🖼  "+label; run.font.color.rgb=H(MUTED); run.font.size=Pt(12); run.font.name=FONT
     return r
 
-# 1 TITLE
 s=slide()
 accent_bar(s,Inches(0.7),Inches(2.6),Inches(0.18),Inches(2.0))
 txt(s,Inches(1.05),Inches(2.5),Inches(11),Inches(1.2),"Epsilon Conductor",54,TEXT,bold=True)
@@ -203,7 +195,6 @@ txt(s,Inches(1.08),Inches(4.5),Inches(10.8),Inches(0.5),
     "We don't predict who will buy. We prove whose decision marketing actually changed.",15,ACCENT)
 txt(s,Inches(1.05),Inches(6.5),Inches(11),Inches(0.4),"Epsilon Hackathon  ·  Theme 02: seamless journeys, clear measures of success",12,MUTED)
 
-# 2 PROBLEM
 s=slide(); heading(s,"Most marketing pays for sales it already had","The problem")
 bullets(s,[
  "Conventional targeting ranks customers by propensity — who is likely to buy.",
@@ -213,7 +204,6 @@ bullets(s,[
 ], t=Inches(2.1), w=Inches(11.4))
 footer(s,2)
 
-# 3 BUCKETS
 s=slide(); heading(s,"Four buckets, one question","The insight")
 pic(s,imgs["buckets"],Inches(6.6),Inches(1.9),Inches(6.2))
 bullets(s,[
@@ -226,14 +216,12 @@ txt(s,Inches(0.95),Inches(5.6),Inches(5.4),Inches(1),
     "Only the Persuadables are worth a dollar — typically a small slice of the base.",14,MUTED)
 footer(s,3)
 
-# 4 ARCHITECTURE
 s=slide(); heading(s,"A closed decisioning loop","How it works")
 pic(s,imgs["arch"],Inches(0.8),Inches(2.4),Inches(11.7))
 txt(s,Inches(0.95),Inches(5.2),Inches(11.4),Inches(1),
     "Identity → causal uplift → channel orchestration → budget allocation → generative message → causal measurement — feeding back into the next decision.",15,MUTED)
 footer(s,4)
 
-# 5 CAUSAL ENGINE
 s=slide(); heading(s,"We model uplift, not propensity","The causal engine")
 pic(s,imgs["qini"],Inches(7.0),Inches(2.0),Inches(5.6))
 bullets(s,[
@@ -244,7 +232,6 @@ bullets(s,[
 ], t=Inches(2.1), w=Inches(5.9))
 footer(s,5)
 
-# 6 LIVE DECISIONING
 s=slide(); heading(s,"Live, per-shopper decisioning","The product")
 bullets(s,[
  "S-Learner scores live behaviour (9 signals) in real time.",
@@ -255,7 +242,6 @@ bullets(s,[
 placeholder(s,Inches(6.9),Inches(2.0),Inches(5.7),Inches(4.2),"Paste screenshot: Console — live shopper view\n(/console · two-world economics + per-product cards)")
 footer(s,6)
 
-# 7 RESTRAINT $
 s=slide(); heading(s,"Restraint, measured in dollars","Economics")
 pic(s,imgs["twoworld"],Inches(6.7),Inches(2.0),Inches(6.0))
 bullets(s,[
@@ -266,7 +252,6 @@ bullets(s,[
 ], t=Inches(2.1), w=Inches(5.6))
 footer(s,7)
 
-# 8 PROOF (killer)
 s=slide(); heading(s,"Proof on a real experiment — measured, not modelled","The proof")
 pic(s,imgs["rct"],Inches(5.6),Inches(1.85),Inches(7.2))
 bullets(s,[
@@ -278,7 +263,6 @@ txt(s,Inches(0.95),Inches(5.4),Inches(4.7),Inches(1.5),
     "That is the spend every propensity model makes blind — and we can prove it on a real RCT.",14,ACCENT)
 footer(s,8)
 
-# 9 NOVELTY TABLE
 s=slide(); heading(s,"What's actually new","Differentiation")
 rows=[("","Conventional martech","Epsilon Conductor"),
  ("Target signal","Propensity — who'll buy","Uplift / CATE — whose mind we change"),
@@ -301,7 +285,6 @@ for ri,row in enumerate(rows):
         run.font.color.rgb=H("#FFFFFF") if ri==0 else (H(TEXT) if ci==2 else H(MUTED))
 footer(s,9)
 
-# 10 EPSILON HOMEWORK
 s=slide(); heading(s,"Built on Epsilon's own playbook","We did the homework")
 bullets(s,[
  "Dell “Unfrozen”: split dormant customers into Nappers & Dormants — and chose to let some go.",
@@ -311,7 +294,6 @@ bullets(s,[
 ], t=Inches(2.1), w=Inches(11.4))
 footer(s,10)
 
-# 11 TECH
 s=slide(); heading(s,"Technology","Under the hood")
 stack=[("Causal ML","EconML X-Learner · S-Learner · scikit-learn"),
  ("Orchestration","Thompson-sampling contextual bandit"),
@@ -327,7 +309,6 @@ for i,(k,v) in enumerate(stack):
     b=p.add_run(); b.text=v; b.font.size=Pt(16); b.font.color.rgb=H(TEXT); b.font.name=FONT
 footer(s,11)
 
-# 12 CLOSE
 s=slide()
 accent_bar(s,Inches(0.7),Inches(2.7),Inches(0.18),Inches(1.7))
 txt(s,Inches(1.05),Inches(2.7),Inches(11),Inches(1.2),"We don't just market smarter.",40,TEXT,bold=True)

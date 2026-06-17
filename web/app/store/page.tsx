@@ -66,8 +66,6 @@ export default function StorePage() {
     store.promotions().then(setPromos);
   }, []);
 
-  // Deep-link: /store?p=<id> (used by the targeted-email CTAs) opens the product so
-  // the shopper lands exactly where the message pointed, before intent decays.
   useEffect(() => {
     if (!uid || !products.length) return;
     const pid = new URLSearchParams(window.location.search).get("p");
@@ -76,7 +74,7 @@ export default function StorePage() {
       if (p) openDetail(p);
       window.history.replaceState({}, "", "/store");
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [uid, products]);
 
   function absorb(res: any) {
@@ -90,7 +88,7 @@ export default function StorePage() {
 
   async function send(type: string, product?: Product, dwell_ms = 0, device: "desktop" | "mobile" = activeDevice) {
     if (!uid) return;
-    if (ended) setEnded(false);            // activity restarts the session
+    if (ended) setEnded(false);
     absorb(await store.track({ uid, type, product_id: product?.id, device, dwell_ms }));
   }
 
@@ -180,7 +178,7 @@ export default function StorePage() {
 
   return (
     <main className="min-h-screen bg-[#f3f4f6] text-slate-900">
-      {/* moving ticker */}
+
       <div className="bg-slate-900 text-white text-xs overflow-hidden whitespace-nowrap">
         <div className="inline-flex animate-marquee py-1.5">
           {[...promos.ticker, ...promos.ticker].map((t, i) => (
@@ -189,7 +187,6 @@ export default function StorePage() {
         </div>
       </div>
 
-      {/* header */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-20">
         <div className="max-w-[1500px] mx-auto px-5 h-14 flex items-center gap-4">
           <div className="flex items-center gap-2 font-extrabold text-xl tracking-tight" style={{ color: BRAND }}>
@@ -218,7 +215,7 @@ export default function StorePage() {
       </header>
 
       <div className="max-w-[1500px] mx-auto px-5 py-5">
-        {/* hero */}
+
         <div className="rounded-2xl p-6 mb-5 text-white flex items-center justify-between" style={{ background: `linear-gradient(110deg, ${BRAND}, #ff6b81)` }}>
           <div>
             <div className="text-xs uppercase tracking-widest opacity-90">New season</div>
@@ -228,7 +225,6 @@ export default function StorePage() {
           <div className="text-7xl hidden sm:block">👗</div>
         </div>
 
-        {/* clip coupons */}
         {promos.coupons.length > 0 && (
           <div className="mb-5">
             <div className="text-sm font-bold mb-2">🎟️ Offers just for you <span className="text-xs font-normal text-slate-400">· clip & save at checkout</span></div>
@@ -248,7 +244,6 @@ export default function StorePage() {
           </div>
         )}
 
-        {/* bundles */}
         {promos.bundles.length > 0 && (
           <div className="mb-5">
             <div className="text-sm font-bold mb-2">🎁 Shop the look — bundle & save</div>
@@ -273,7 +268,6 @@ export default function StorePage() {
           </div>
         )}
 
-        {/* recommendations */}
         {recs.length > 0 && (
           <div className="mb-5 bg-white border border-slate-200 rounded-xl p-3">
             <div className="text-sm font-bold mb-2">✨ Recommended for you <span className="text-xs font-normal text-slate-400">· because you viewed {profile?.top_product?.name}</span></div>
@@ -289,7 +283,6 @@ export default function StorePage() {
           </div>
         )}
 
-        {/* dynamic, causally-priced bundle — Conductor assembled this live */}
         {bundle && (
           <div className="mb-5 rounded-2xl p-4 border-2 border-dashed" style={{ borderColor: BRAND + "66", background: "linear-gradient(110deg,#fff,#fff5f6)" }}>
             <div className="flex items-center justify-between flex-wrap gap-3">
@@ -315,7 +308,6 @@ export default function StorePage() {
           </div>
         )}
 
-        {/* product grid */}
         <div className="flex items-center justify-between mb-3">
           <div>
             <h2 className="text-lg font-bold">{activeCat === "All" ? "Trending now" : activeCat}</h2>
@@ -358,13 +350,12 @@ export default function StorePage() {
   );
 }
 
-/* ---------- image with graceful fallback ---------- */
 function ProductImage({ p, big }: { p: Product; big?: boolean }) {
   const [failed, setFailed] = useState(false);
   return (
     <div className={`relative ${CAT_THEME[p.cat] ?? "bg-slate-100"} rounded-xl overflow-hidden ${big ? "w-full aspect-square" : "aspect-square"}`}>
       {p.img && !failed ? (
-        // eslint-disable-next-line @next/next/no-img-element
+
         <img src={p.img} alt={p.name} onError={() => setFailed(true)} loading="lazy"
           className="absolute inset-0 w-full h-full object-cover" />
       ) : (
@@ -412,7 +403,7 @@ function ProductModal({ d, wished, onClose, onAdd, onWish, onReadReviews, onView
   const reviewsRef = useRef<HTMLDivElement>(null);
   const total = Object.values(d.rating_breakdown).reduce((a, b) => a + b, 0) || 1;
   const onSale = d.discount_pct && d.discount_pct > 0;
-  // Only the top reviews show by default; expanding is itself a strong intent signal.
+
   const topReviews = d.reviews.slice(0, 2);
   const shownReviews = showAll ? d.reviews : topReviews;
   return (
@@ -711,7 +702,7 @@ function PhoneStore({ onClose, resolving, sug, products, cats, profile, wishIds,
           </div>
         ) : (
           <div className="bg-[#f3f4f6] h-[calc(100%-1.75rem)] overflow-auto text-slate-900 relative">
-            {/* sticky header — same brand UI as web */}
+
             <div className="sticky top-0 z-10 bg-white border-b border-slate-200 px-3 h-11 flex items-center justify-between">
               {sel ? <button onClick={back} className="text-sm text-slate-500">← Back</button>
                    : <div className="font-extrabold text-lg" style={{ color: BRAND }}>VERVE</div>}
@@ -724,7 +715,6 @@ function PhoneStore({ onClose, resolving, sug, products, cats, profile, wishIds,
               </div>
             )}
 
-            {/* on-site (In-App) Conductor nudge — the only kind of message allowed while live */}
             {!sel && nba?.recommend && (
               <div className="m-2 bg-white border rounded-2xl p-3 shadow-sm" style={{ borderColor: BRAND + "55" }}>
                 <div className="text-[10px] uppercase tracking-widest text-slate-400">{nba.channel_icon} In-app · {nba.channel}</div>
@@ -735,7 +725,7 @@ function PhoneStore({ onClose, resolving, sug, products, cats, profile, wishIds,
             )}
 
             {sel ? (
-              /* compact product detail — interactive, same actions as web, mobile-tracked */
+
               <div className="p-3">
                 <div className="w-full max-w-[200px] mx-auto"><ProductImage p={sel} big /></div>
                 <div className="text-[10px] text-slate-400 mt-2">{sel.cat}</div>
@@ -759,7 +749,7 @@ function PhoneStore({ onClose, resolving, sug, products, cats, profile, wishIds,
               </div>
             ) : (
               <>
-                {/* category chips */}
+
                 <div className="flex gap-1 overflow-x-auto px-2 py-2">
                   {["All", ...cats].map((c) => (
                     <button key={c} onClick={() => setCat(c)}
@@ -767,7 +757,7 @@ function PhoneStore({ onClose, resolving, sug, products, cats, profile, wishIds,
                       style={cat === c ? { background: BRAND } : {}}>{c}</button>
                   ))}
                 </div>
-                {/* product grid — reuses the exact web ProductCard */}
+
                 <div className="grid grid-cols-2 gap-2 px-2 pb-24">
                   {shown.map((p) => (
                     <ProductCard key={p.id} p={p} wished={wishIds.has(p.id)}
@@ -777,7 +767,6 @@ function PhoneStore({ onClose, resolving, sug, products, cats, profile, wishIds,
               </>
             )}
 
-            {/* sticky bottom bar: checkout + leave/end session */}
             <div className="sticky bottom-0 bg-white border-t border-slate-200 px-3 py-2 flex gap-2">
               {cartCount > 0 && (
                 <button onClick={onCheckout} className="flex-1 text-white font-semibold rounded-lg py-2 text-sm" style={{ background: "#16a34a" }}>

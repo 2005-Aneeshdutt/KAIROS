@@ -1,7 +1,3 @@
-// Thin API client. All calls go through Next's /api proxy to FastAPI. If the
-// backend is down, callers fall back to bundled snapshot data so the demo never
-// shows a blank screen.
-
 export type Segment = {
   bucket: string;
   count: number;

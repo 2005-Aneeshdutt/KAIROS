@@ -9,7 +9,7 @@ const config: Config = {
         panel: "#111726",
         panel2: "#161d2e",
         line: "#222c42",
-        epsilon: "#e6005a",     // Epsilon magenta
+        epsilon: "#e6005a",
         persuadable: "#3b82f6",
         sure: "#22c55e",
         lost: "#ef4444",

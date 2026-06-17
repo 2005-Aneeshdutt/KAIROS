@@ -1,18 +1,3 @@
-"""Epsilon Conductor API — serves the trained artifacts to the dashboard.
-
-Endpoints:
-  GET  /health
-  GET  /segments              bucket counts + summary stats
-  GET  /customers             paginated, filterable by bucket
-  GET  /customers/{id}        single customer detail + recommended action
-  GET  /qini                  Qini curve + AUUC
-  GET  /allocation            marginal-ROI curve, knee, restraint metrics
-  POST /allocate              re-solve allocation at a given budget
-  POST /explain               Claude explains a customer-level decision (Day 6)
-
-Run:  uvicorn main:app --reload  (from /api, after the ML pipeline has produced
-      ml/artifacts/*)
-"""
 from __future__ import annotations
 
 import json
@@ -45,14 +30,12 @@ BUCKET_ACTION = {
     "Sleeping Dog": ("SUPPRESS", "Marketing backfires — actively leave alone."),
 }
 
-
 @lru_cache(maxsize=1)
 def scores() -> pd.DataFrame:
     f = ART / "scores.parquet"
     if not f.exists():
         raise HTTPException(503, "scores.parquet missing — run `python -m src.uplift`")
     return pd.read_parquet(f)
-
 
 @lru_cache(maxsize=1)
 def allocation() -> dict:
@@ -61,11 +44,9 @@ def allocation() -> dict:
         raise HTTPException(503, "allocation.json missing — run `python -m src.allocate`")
     return json.loads(f.read_text())
 
-
 @lru_cache(maxsize=1)
 def qini() -> dict:
     return json.loads((ART / "qini.json").read_text())
-
 
 @lru_cache(maxsize=1)
 def bandit() -> dict:
@@ -74,11 +55,9 @@ def bandit() -> dict:
         raise HTTPException(503, "bandit.json missing — run `python -m src.bandit`")
     return json.loads(f.read_text())
 
-
 @app.get("/health")
 def health():
     return {"status": "ok", "artifacts": [p.name for p in ART.glob("*")]}
-
 
 @app.get("/segments")
 def segments():
@@ -98,7 +77,6 @@ def segments():
         })
     return {"total_customers": int(len(df)), "segments": out}
 
-
 @app.get("/customers")
 def customers(
     bucket: str | None = None,
@@ -111,7 +89,6 @@ def customers(
     page = df.iloc[offset:offset + limit]
     return {"total": int(len(df)), "items": _rows(page)}
 
-
 @app.get("/customers/{customer_id}")
 def customer(customer_id: str):
     df = scores()
@@ -120,25 +97,20 @@ def customer(customer_id: str):
         raise HTTPException(404, f"no customer {customer_id}")
     return _rows(row)[0]
 
-
 @app.get("/qini")
 def qini_endpoint():
     return qini()
-
 
 @app.get("/allocation")
 def allocation_endpoint():
     return allocation()
 
-
 class AllocateReq(BaseModel):
     budget: float
-
 
 @app.get("/bandit")
 def bandit_endpoint():
     return bandit()
-
 
 @app.get("/simulate/stream")
 async def simulate_stream(
@@ -147,8 +119,6 @@ async def simulate_stream(
     delay_ms: int = Query(220, ge=0, le=2000),
     seed: int | None = None,
 ):
-    """Server-Sent Events: one event per campaign tick, Traditional vs Conductor.
-    The dashboard opens this with EventSource and animates both worlds live."""
     async def gen():
         for event in sim.run_simulation(sample_size=sample_size, ticks=ticks, seed=seed):
             yield sim.sse_format(event)
@@ -157,14 +127,9 @@ async def simulate_stream(
     return StreamingResponse(gen(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
-
-# ---------------------------------------------------------------------------
-# Live storefront tracking + identity resolution + next-best-action
-# ---------------------------------------------------------------------------
 @app.get("/store/catalogue")
 def catalogue():
     return {"products": trk.catalogue_cards(), "categories": trk.CATEGORIES}
-
 
 @app.get("/store/product/{pid}")
 def product(pid: str):
@@ -173,48 +138,36 @@ def product(pid: str):
         raise HTTPException(404, f"no product {pid}")
     return d
 
-
 @app.get("/store/promotions")
 def promotions():
     return trk.promotions()
 
-
 @app.get("/live-customers")
 def live_customers():
-    """Shoppers currently being scored by the live uplift model — surfaced to the
-    marketer analytics so the storefront and dashboard are one connected product."""
     rows = sorted(trk.LIVE_SHOPPERS.values(), key=lambda r: r["ts"], reverse=True)
     counts: dict[str, int] = {}
     for r in rows:
         counts[r["bucket"]] = counts.get(r["bucket"], 0) + 1
     return {"count": len(rows), "buckets": counts, "shoppers": rows[:50]}
 
-
 class RedeemReq(BaseModel):
     uid: str
     reward_id: str
-
 
 @app.post("/redeem")
 def redeem(req: RedeemReq):
     return trk.STORE.redeem(req.uid, req.reward_id)
 
-
 class TrackReq(BaseModel):
     uid: str
-    type: str                       # view_product | add_to_cart | remove_from_cart | checkout | page
+    type: str
     product_id: str | None = None
     device: str = "desktop"
     dwell_ms: int = 0
     meta: dict | None = None
 
-
 @app.post("/track")
 def track(req: TrackReq):
-    """Record a single behavioural event; return the stored event, live profile,
-    next-best-action, the with/without mail simulation, plus the live intelligence:
-    detected behavioural patterns, a dynamic causal bundle, two-world economics, and
-    the shopper's targeted-message inbox."""
     v = trk.STORE.track(req.uid, req.model_dump())
     return {
         "stored_event": v.events[-1],
@@ -224,9 +177,8 @@ def track(req: TrackReq):
         "patterns": trk.detect_patterns(v),
         "bundle": trk.detect_bundle(v),
         "economics": trk.session_economics(v),
-        "inbox": v.inbox[::-1],          # email only gets delivered on /session/end
+        "inbox": v.inbox[::-1],
     }
-
 
 @app.get("/visitor/{uid}")
 def visitor(uid: str):
@@ -240,80 +192,55 @@ def visitor(uid: str):
             "cart": [trk.enrich(trk.PRODUCT_BY_ID[c]) for c in v.cart if c in trk.PRODUCT_BY_ID],
             "orders": v.orders[::-1]}
 
-
 class SessionEndReq(BaseModel):
     uid: str
     device: str = "desktop"
 
-
 @app.post("/session/end")
 def session_end(req: SessionEndReq):
-    """The shopper left the site — now (and only now) marketing makes sense. Delivers
-    the one off-site message worth sending to their inbox, or stays silent."""
     return trk.STORE.end_session(req.uid, req.device)
-
 
 class PurchaseReq(BaseModel):
     uid: str
     applied_points: int = 0
 
-
 @app.post("/purchase")
 def purchase(req: PurchaseReq):
-    """Check out the visitor's cart into a real order, moving live revenue."""
     res = trk.STORE.purchase(req.uid, req.applied_points)
     if not res.get("ok"):
         raise HTTPException(400, res.get("error", "checkout failed"))
     return res
 
-
 @app.get("/analytics/live")
 def analytics_live():
-    """Real-time, customer-based analytics across everyone in the store: funnel, live
-    bucket mix, top products, and revenue (updates as shoppers browse and buy)."""
     return trk.cohort_analytics()
-
 
 @app.get("/strategy")
 def strategy():
-    """Data-backed marketing strategy: funnel, per-segment playbook, channel strategy,
-    and prioritised recommendations — computed live from the current cohort."""
     return trk.strategy_report()
-
 
 @app.get("/benchmark")
 def benchmark(n: int = Query(5000, ge=200, le=64000), seed: int = 42):
-    """Reproducible head-to-head: Traditional vs Conductor over n customers, same
-    population and response model. Proves the superiority with seeded, testable numbers."""
     return sim.benchmark(n=n, seed=seed)
-
 
 @app.get("/inbox/{uid}")
 def inbox(uid: str, device: str = "desktop"):
-    """The shopper's targeted-message inbox — the emails/pushes Conductor delivered
-    after sessions ended (we never market while they're actively on-site)."""
     v = trk.STORE.visitor(uid)
     return {"inbox": v.inbox[::-1]}
 
-
 @app.get("/visitor/{uid}/suggestion")
 def suggestion(uid: str, device: str = "mobile"):
-    """Called when the visitor arrives on a NEW device — identity is resolved and
-    the cross-device next-best-action is returned."""
     v = trk.STORE.visitor(uid)
     v.add_device(device)
     return {"identity_resolved": len(v.devices) > 1, "devices": v.devices,
             "profile": trk.profile(v), "next_best_action": trk.next_best_action(v, device),
             "mail": trk.mail_simulation(v, device)}
 
-
 @app.get("/visitor/{uid}/stream")
 async def visitor_stream(uid: str):
-    """SSE feed for the marketer's live journey panel — pushes the visitor's
-    profile + recent events whenever they change."""
     async def gen():
         last = -1
-        for _ in range(3000):                       # ~10 min cap at 0.2s
+        for _ in range(3000):
             v = trk.STORE.visitor(uid)
             if len(v.events) != last:
                 last = len(v.events)
@@ -327,16 +254,11 @@ async def visitor_stream(uid: str):
     return StreamingResponse(gen(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
-
 class ExplainReq(BaseModel):
     customer_id: str
 
-
 @app.post("/explain")
 def explain(req: ExplainReq):
-    """Claude explains, in plain English, why the system made its call for this
-    customer — the human-in-the-loop trust layer. Falls back to a templated
-    rationale if ANTHROPIC_API_KEY isn't set, so the demo always responds."""
     df = scores()
     row = df[df["customer_id"] == req.customer_id]
     if row.empty:
@@ -374,7 +296,6 @@ def explain(req: ExplainReq):
     except Exception as e:
         return {"explanation": _fallback_explain(r, action), "source": f"template ({e})"}
 
-
 def _fallback_explain(r, action: str) -> str:
     if r["bucket"] == "Sure Thing":
         return (
@@ -400,18 +321,14 @@ def _fallback_explain(r, action: str) -> str:
         f"({r['uplift']:+.1%} lift). Spending here is wasted."
     )
 
-
 @app.post("/allocate")
 def allocate(req: AllocateReq):
-    """Re-solve the greedy allocation at an arbitrary budget (drives the slider)."""
     df = scores()
     from_curve = allocation()["curve"]
-    # Interpolate the precomputed concave frontier for instant slider response.
     xs = [p["budget"] for p in from_curve]
     rev = float(np.interp(req.budget, xs, [p["revenue"] for p in from_curve]))
     cust = int(np.interp(req.budget, xs, [p["customers"] for p in from_curve]))
     return {"budget": req.budget, "revenue": round(rev, 2), "customers_targeted": cust}
-
 
 def _rows(df: pd.DataFrame) -> list[dict]:
     recs = []

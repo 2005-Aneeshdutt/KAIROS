@@ -85,7 +85,7 @@ export default function ConsolePage() {
           </div>
         ) : (
           <div className="grid md:grid-cols-[340px_1fr] gap-5">
-            {/* left: live profile */}
+
             <div className="space-y-4">
               <div className="card">
                 <div className="card-title">Live shopper profile</div>
@@ -196,7 +196,6 @@ export default function ConsolePage() {
               )}
             </div>
 
-            {/* right: tabs */}
             <div className="card">
               <div className="flex gap-1 mb-3 text-xs">
                 {([["data", "📡 Data layer"], ["with", "✅ With Conductor"], ["without", "🚫 Without Conductor"]] as const).map(([k, label]) => (
