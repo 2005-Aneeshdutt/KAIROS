@@ -1,0 +1,328 @@
+{
+  "curve": [
+    {
+      "budget": 0.0,
+      "revenue": 0.0,
+      "customers": 0
+    },
+    {
+      "budget": 162.38,
+      "revenue": 2764.56,
+      "customers": 3131
+    },
+    {
+      "budget": 324.76,
+      "revenue": 4741.27,
+      "customers": 6345
+    },
+    {
+      "budget": 487.14,
+      "revenue": 6487.6,
+      "customers": 9502
+    },
+    {
+      "budget": 649.52,
+      "revenue": 8059.62,
+      "customers": 12600
+    },
+    {
+      "budget": 811.9,
+      "revenue": 9450.84,
+      "customers": 15607
+    },
+    {
+      "budget": 974.28,
+      "revenue": 10675.14,
+      "customers": 18513
+    },
+    {
+      "budget": 1136.66,
+      "revenue": 11774.65,
+      "customers": 21252
+    },
+    {
+      "budget": 1299.04,
+      "revenue": 12778.39,
+      "customers": 23540
+    },
+    {
+      "budget": 1461.42,
+      "revenue": 13688.09,
+      "customers": 25590
+    },
+    {
+      "budget": 1623.8,
+      "revenue": 14514.89,
+      "customers": 27413
+    },
+    {
+      "budget": 1786.18,
+      "revenue": 15263.64,
+      "customers": 28907
+    },
+    {
+      "budget": 1948.56,
+      "revenue": 15943.72,
+      "customers": 30183
+    },
+    {
+      "budget": 2110.94,
+      "revenue": 16562.96,
+      "customers": 31363
+    },
+    {
+      "budget": 2273.32,
+      "revenue": 17134.81,
+      "customers": 32342
+    },
+    {
+      "budget": 2435.69,
+      "revenue": 17667.92,
+      "customers": 33245
+    },
+    {
+      "budget": 2598.07,
+      "revenue": 18168.23,
+      "customers": 34057
+    },
+    {
+      "budget": 2760.45,
+      "revenue": 18643.45,
+      "customers": 34810
+    },
+    {
+      "budget": 2922.83,
+      "revenue": 19098.15,
+      "customers": 35548
+    },
+    {
+      "budget": 3085.21,
+      "revenue": 19536.87,
+      "customers": 36270
+    },
+    {
+      "budget": 3247.59,
+      "revenue": 19961.09,
+      "customers": 37009
+    },
+    {
+      "budget": 3409.97,
+      "revenue": 20369.9,
+      "customers": 37727
+    },
+    {
+      "budget": 3572.35,
+      "revenue": 20766.14,
+      "customers": 38446
+    },
+    {
+      "budget": 3734.73,
+      "revenue": 21150.39,
+      "customers": 39153
+    },
+    {
+      "budget": 3897.11,
+      "revenue": 21523.89,
+      "customers": 39869
+    },
+    {
+      "budget": 4059.49,
+      "revenue": 21888.74,
+      "customers": 40554
+    },
+    {
+      "budget": 4221.87,
+      "revenue": 22246.25,
+      "customers": 41224
+    },
+    {
+      "budget": 4384.25,
+      "revenue": 22597.22,
+      "customers": 41905
+    },
+    {
+      "budget": 4546.63,
+      "revenue": 22941.63,
+      "customers": 42586
+    },
+    {
+      "budget": 4709.01,
+      "revenue": 23279.32,
+      "customers": 43272
+    },
+    {
+      "budget": 4871.39,
+      "revenue": 23609.32,
+      "customers": 43957
+    },
+    {
+      "budget": 5033.77,
+      "revenue": 23930.68,
+      "customers": 44664
+    },
+    {
+      "budget": 5196.15,
+      "revenue": 24244.6,
+      "customers": 45340
+    },
+    {
+      "budget": 5358.53,
+      "revenue": 24551.95,
+      "customers": 46025
+    },
+    {
+      "budget": 5520.91,
+      "revenue": 24850.76,
+      "customers": 46736
+    },
+    {
+      "budget": 5683.29,
+      "revenue": 25141.98,
+      "customers": 47413
+    },
+    {
+      "budget": 5845.67,
+      "revenue": 25425.79,
+      "customers": 48108
+    },
+    {
+      "budget": 6008.05,
+      "revenue": 25701.88,
+      "customers": 48776
+    },
+    {
+      "budget": 6170.43,
+      "revenue": 25970.89,
+      "customers": 49467
+    },
+    {
+      "budget": 6332.81,
+      "revenue": 26230.32,
+      "customers": 50140
+    },
+    {
+      "budget": 6495.19,
+      "revenue": 26483.51,
+      "customers": 50801
+    },
+    {
+      "budget": 6657.57,
+      "revenue": 26731.51,
+      "customers": 51465
+    },
+    {
+      "budget": 6819.95,
+      "revenue": 26973.51,
+      "customers": 52152
+    },
+    {
+      "budget": 6982.33,
+      "revenue": 27208.02,
+      "customers": 52817
+    },
+    {
+      "budget": 7144.71,
+      "revenue": 27436.41,
+      "customers": 53475
+    },
+    {
+      "budget": 7307.08,
+      "revenue": 27659.86,
+      "customers": 54151
+    },
+    {
+      "budget": 7469.46,
+      "revenue": 27878.21,
+      "customers": 54809
+    },
+    {
+      "budget": 7631.84,
+      "revenue": 28091.64,
+      "customers": 55465
+    },
+    {
+      "budget": 7794.22,
+      "revenue": 28299.5,
+      "customers": 56128
+    },
+    {
+      "budget": 7956.6,
+      "revenue": 28500.78,
+      "customers": 56791
+    },
+    {
+      "budget": 8118.98,
+      "revenue": 28694.99,
+      "customers": 57491
+    },
+    {
+      "budget": 8281.36,
+      "revenue": 28882.33,
+      "customers": 58148
+    },
+    {
+      "budget": 8443.74,
+      "revenue": 29061.67,
+      "customers": 58816
+    },
+    {
+      "budget": 8606.12,
+      "revenue": 29233.47,
+      "customers": 59471
+    },
+    {
+      "budget": 8768.5,
+      "revenue": 29396.09,
+      "customers": 60141
+    },
+    {
+      "budget": 8930.88,
+      "revenue": 29546.97,
+      "customers": 60803
+    },
+    {
+      "budget": 9093.26,
+      "revenue": 29684.45,
+      "customers": 61471
+    },
+    {
+      "budget": 9255.64,
+      "revenue": 29798.4,
+      "customers": 62158
+    },
+    {
+      "budget": 9418.02,
+      "revenue": 29861.34,
+      "customers": 62876
+    },
+    {
+      "budget": 9580.4,
+      "revenue": 29861.65,
+      "customers": 64000
+    }
+  ],
+  "knee": {
+    "budget": 2435.69,
+    "revenue": 17667.92,
+    "customers": 33245
+  },
+  "optimal": {
+    "method": "PuLP CBC (0/1 knapsack)",
+    "budget": 2435.69,
+    "customers_targeted": 33245,
+    "revenue_generated": 17667.92
+  },
+  "restraint_metrics": {
+    "revenue_generated": 17667.92,
+    "budget_saved": 5310.53,
+    "revenue_protected": 639.41,
+    "total_impact": 23617.86
+  },
+  "economics": {
+    "avg_order_value": 116.36,
+    "discount_rate": 0.2,
+    "offer_value": 23.27,
+    "scale_factor": 1.0,
+    "basis": "measured"
+  }
+}

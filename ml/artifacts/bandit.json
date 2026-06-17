@@ -1,0 +1,537 @@
+{
+  "channels": [
+    "Email",
+    "Push",
+    "SMS",
+    "WhatsApp"
+  ],
+  "curve": [
+    {
+      "round": 1,
+      "thompson": 0,
+      "random": 1,
+      "oracle": 0
+    },
+    {
+      "round": 76,
+      "thompson": 10,
+      "random": 9,
+      "oracle": 17
+    },
+    {
+      "round": 151,
+      "thompson": 16,
+      "random": 18,
+      "oracle": 29
+    },
+    {
+      "round": 226,
+      "thompson": 28,
+      "random": 29,
+      "oracle": 41
+    },
+    {
+      "round": 301,
+      "thompson": 41,
+      "random": 43,
+      "oracle": 57
+    },
+    {
+      "round": 376,
+      "thompson": 53,
+      "random": 50,
+      "oracle": 69
+    },
+    {
+      "round": 451,
+      "thompson": 61,
+      "random": 57,
+      "oracle": 86
+    },
+    {
+      "round": 526,
+      "thompson": 68,
+      "random": 70,
+      "oracle": 104
+    },
+    {
+      "round": 601,
+      "thompson": 77,
+      "random": 81,
+      "oracle": 124
+    },
+    {
+      "round": 676,
+      "thompson": 87,
+      "random": 85,
+      "oracle": 137
+    },
+    {
+      "round": 751,
+      "thompson": 97,
+      "random": 93,
+      "oracle": 151
+    },
+    {
+      "round": 826,
+      "thompson": 107,
+      "random": 100,
+      "oracle": 162
+    },
+    {
+      "round": 901,
+      "thompson": 115,
+      "random": 111,
+      "oracle": 173
+    },
+    {
+      "round": 976,
+      "thompson": 123,
+      "random": 123,
+      "oracle": 186
+    },
+    {
+      "round": 1051,
+      "thompson": 135,
+      "random": 131,
+      "oracle": 201
+    },
+    {
+      "round": 1126,
+      "thompson": 144,
+      "random": 142,
+      "oracle": 210
+    },
+    {
+      "round": 1201,
+      "thompson": 155,
+      "random": 152,
+      "oracle": 227
+    },
+    {
+      "round": 1276,
+      "thompson": 162,
+      "random": 163,
+      "oracle": 236
+    },
+    {
+      "round": 1351,
+      "thompson": 173,
+      "random": 172,
+      "oracle": 247
+    },
+    {
+      "round": 1426,
+      "thompson": 185,
+      "random": 177,
+      "oracle": 261
+    },
+    {
+      "round": 1501,
+      "thompson": 200,
+      "random": 185,
+      "oracle": 281
+    },
+    {
+      "round": 1576,
+      "thompson": 210,
+      "random": 198,
+      "oracle": 297
+    },
+    {
+      "round": 1651,
+      "thompson": 217,
+      "random": 205,
+      "oracle": 307
+    },
+    {
+      "round": 1726,
+      "thompson": 229,
+      "random": 216,
+      "oracle": 318
+    },
+    {
+      "round": 1801,
+      "thompson": 241,
+      "random": 226,
+      "oracle": 331
+    },
+    {
+      "round": 1876,
+      "thompson": 245,
+      "random": 234,
+      "oracle": 345
+    },
+    {
+      "round": 1951,
+      "thompson": 256,
+      "random": 245,
+      "oracle": 357
+    },
+    {
+      "round": 2026,
+      "thompson": 266,
+      "random": 254,
+      "oracle": 377
+    },
+    {
+      "round": 2101,
+      "thompson": 274,
+      "random": 267,
+      "oracle": 394
+    },
+    {
+      "round": 2176,
+      "thompson": 284,
+      "random": 275,
+      "oracle": 404
+    },
+    {
+      "round": 2251,
+      "thompson": 294,
+      "random": 287,
+      "oracle": 425
+    },
+    {
+      "round": 2326,
+      "thompson": 309,
+      "random": 299,
+      "oracle": 437
+    },
+    {
+      "round": 2401,
+      "thompson": 320,
+      "random": 309,
+      "oracle": 453
+    },
+    {
+      "round": 2476,
+      "thompson": 331,
+      "random": 318,
+      "oracle": 475
+    },
+    {
+      "round": 2551,
+      "thompson": 342,
+      "random": 328,
+      "oracle": 494
+    },
+    {
+      "round": 2626,
+      "thompson": 350,
+      "random": 337,
+      "oracle": 507
+    },
+    {
+      "round": 2701,
+      "thompson": 361,
+      "random": 349,
+      "oracle": 531
+    },
+    {
+      "round": 2776,
+      "thompson": 371,
+      "random": 355,
+      "oracle": 550
+    },
+    {
+      "round": 2851,
+      "thompson": 380,
+      "random": 366,
+      "oracle": 559
+    },
+    {
+      "round": 2926,
+      "thompson": 390,
+      "random": 374,
+      "oracle": 569
+    },
+    {
+      "round": 3001,
+      "thompson": 403,
+      "random": 390,
+      "oracle": 589
+    },
+    {
+      "round": 3076,
+      "thompson": 411,
+      "random": 402,
+      "oracle": 606
+    },
+    {
+      "round": 3151,
+      "thompson": 425,
+      "random": 416,
+      "oracle": 625
+    },
+    {
+      "round": 3226,
+      "thompson": 437,
+      "random": 434,
+      "oracle": 641
+    },
+    {
+      "round": 3301,
+      "thompson": 456,
+      "random": 441,
+      "oracle": 655
+    },
+    {
+      "round": 3376,
+      "thompson": 471,
+      "random": 447,
+      "oracle": 666
+    },
+    {
+      "round": 3451,
+      "thompson": 483,
+      "random": 461,
+      "oracle": 681
+    },
+    {
+      "round": 3526,
+      "thompson": 494,
+      "random": 470,
+      "oracle": 695
+    },
+    {
+      "round": 3601,
+      "thompson": 513,
+      "random": 479,
+      "oracle": 713
+    },
+    {
+      "round": 3676,
+      "thompson": 523,
+      "random": 485,
+      "oracle": 720
+    },
+    {
+      "round": 3751,
+      "thompson": 533,
+      "random": 496,
+      "oracle": 734
+    },
+    {
+      "round": 3826,
+      "thompson": 544,
+      "random": 504,
+      "oracle": 746
+    },
+    {
+      "round": 3901,
+      "thompson": 561,
+      "random": 509,
+      "oracle": 758
+    },
+    {
+      "round": 3976,
+      "thompson": 571,
+      "random": 522,
+      "oracle": 767
+    },
+    {
+      "round": 4051,
+      "thompson": 582,
+      "random": 535,
+      "oracle": 786
+    },
+    {
+      "round": 4126,
+      "thompson": 594,
+      "random": 549,
+      "oracle": 805
+    },
+    {
+      "round": 4201,
+      "thompson": 602,
+      "random": 554,
+      "oracle": 820
+    },
+    {
+      "round": 4276,
+      "thompson": 615,
+      "random": 565,
+      "oracle": 832
+    },
+    {
+      "round": 4351,
+      "thompson": 632,
+      "random": 577,
+      "oracle": 841
+    },
+    {
+      "round": 4426,
+      "thompson": 644,
+      "random": 585,
+      "oracle": 855
+    },
+    {
+      "round": 4501,
+      "thompson": 658,
+      "random": 597,
+      "oracle": 872
+    },
+    {
+      "round": 4576,
+      "thompson": 672,
+      "random": 612,
+      "oracle": 885
+    },
+    {
+      "round": 4651,
+      "thompson": 688,
+      "random": 621,
+      "oracle": 905
+    },
+    {
+      "round": 4726,
+      "thompson": 697,
+      "random": 626,
+      "oracle": 920
+    },
+    {
+      "round": 4801,
+      "thompson": 711,
+      "random": 641,
+      "oracle": 940
+    },
+    {
+      "round": 4876,
+      "thompson": 719,
+      "random": 649,
+      "oracle": 953
+    },
+    {
+      "round": 4951,
+      "thompson": 730,
+      "random": 658,
+      "oracle": 968
+    },
+    {
+      "round": 5026,
+      "thompson": 743,
+      "random": 670,
+      "oracle": 984
+    },
+    {
+      "round": 5101,
+      "thompson": 755,
+      "random": 682,
+      "oracle": 1001
+    },
+    {
+      "round": 5176,
+      "thompson": 772,
+      "random": 690,
+      "oracle": 1018
+    },
+    {
+      "round": 5251,
+      "thompson": 787,
+      "random": 702,
+      "oracle": 1033
+    },
+    {
+      "round": 5326,
+      "thompson": 804,
+      "random": 714,
+      "oracle": 1048
+    },
+    {
+      "round": 5401,
+      "thompson": 815,
+      "random": 727,
+      "oracle": 1067
+    },
+    {
+      "round": 5476,
+      "thompson": 834,
+      "random": 735,
+      "oracle": 1081
+    },
+    {
+      "round": 5551,
+      "thompson": 847,
+      "random": 742,
+      "oracle": 1097
+    },
+    {
+      "round": 5626,
+      "thompson": 862,
+      "random": 751,
+      "oracle": 1110
+    },
+    {
+      "round": 5701,
+      "thompson": 877,
+      "random": 760,
+      "oracle": 1123
+    },
+    {
+      "round": 5776,
+      "thompson": 896,
+      "random": 776,
+      "oracle": 1137
+    },
+    {
+      "round": 5851,
+      "thompson": 907,
+      "random": 791,
+      "oracle": 1156
+    },
+    {
+      "round": 5926,
+      "thompson": 922,
+      "random": 802,
+      "oracle": 1179
+    },
+    {
+      "round": 6000,
+      "thompson": 934,
+      "random": 814,
+      "oracle": 1190
+    }
+  ],
+  "learned_best_channel": {
+    "Lost Cause \u00b7 1) $0 - $100": "Email",
+    "Lost Cause \u00b7 2) $100 - $200": "Push",
+    "Lost Cause \u00b7 3) $200 - $350": "SMS",
+    "Lost Cause \u00b7 4) $350 - $500": "Email",
+    "Lost Cause \u00b7 5) $500 - $750": "Email",
+    "Lost Cause \u00b7 6) $750 - $1,000": "Email",
+    "Lost Cause \u00b7 7) $1,000 +": "SMS",
+    "Persuadable \u00b7 1) $0 - $100": "WhatsApp",
+    "Persuadable \u00b7 2) $100 - $200": "Email",
+    "Persuadable \u00b7 3) $200 - $350": "WhatsApp",
+    "Persuadable \u00b7 4) $350 - $500": "SMS",
+    "Persuadable \u00b7 5) $500 - $750": "WhatsApp",
+    "Persuadable \u00b7 6) $750 - $1,000": "Email",
+    "Persuadable \u00b7 7) $1,000 +": "Email",
+    "Sleeping Dog \u00b7 1) $0 - $100": "SMS",
+    "Sleeping Dog \u00b7 2) $100 - $200": "Push",
+    "Sleeping Dog \u00b7 3) $200 - $350": "Email",
+    "Sleeping Dog \u00b7 4) $350 - $500": "Push",
+    "Sleeping Dog \u00b7 5) $500 - $750": "Email",
+    "Sleeping Dog \u00b7 6) $750 - $1,000": "Push",
+    "Sleeping Dog \u00b7 7) $1,000 +": "WhatsApp",
+    "Sure Thing \u00b7 1) $0 - $100": "Push",
+    "Sure Thing \u00b7 2) $100 - $200": "SMS",
+    "Sure Thing \u00b7 3) $200 - $350": "WhatsApp",
+    "Sure Thing \u00b7 4) $350 - $500": "Email",
+    "Sure Thing \u00b7 5) $500 - $750": "SMS",
+    "Sure Thing \u00b7 6) $750 - $1,000": "SMS",
+    "Sure Thing \u00b7 7) $1,000 +": "WhatsApp"
+  },
+  "summary": {
+    "rounds": 6000,
+    "lift_vs_random_pct": 14.7,
+    "pct_of_oracle": 78.5,
+    "final": {
+      "round": 6000,
+      "thompson": 934,
+      "random": 814,
+      "oracle": 1190
+    }
+  }
+}
