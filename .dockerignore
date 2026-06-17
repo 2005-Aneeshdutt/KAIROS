@@ -1,0 +1,10 @@
+.git
+**/node_modules
+**/.next
+**/__pycache__
+**/*.tsbuildinfo
+.venv
+ml/data
+docs
+build_deck.py
+*.pptx
