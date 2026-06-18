@@ -31,6 +31,9 @@ proves it with causal metrics (Qini / AUUC), not accuracy.
   surfaces the marginal-ROI knee.
 - **Minimum Effective Dose** — the smallest discount that still converts, not a blanket 20%.
 - **Restraint, measured in dollars** — Revenue Generated / Budget Saved / Revenue Protected.
+- **AI Strategist agent** — a tool-using agent that plans a campaign by calling the system's
+  own tools (segments, allocation, benchmark, strategy) and grounding its answer in the real
+  numbers. Works with no API key; upgrades to an LLM automatically if one is configured.
 - **Explainable** — every decision (including *not* to spend) explained in plain English.
 
 ## Proof — measured, not modelled
