@@ -1,53 +1,65 @@
-# Architecture — Epsilon Conductor
+# Architecture — Kairos
 
 ## System diagram
 
 ```
 ┌──────────────┐     ┌─────────────────────────────────────────────┐
-│  Hillstrom   │     │                  ML PIPELINE  (/ml)          │
+│  Hillstrom   │     │                 ML PIPELINE  (/ml)           │
 │  RCT data    │────▶│                                              │
-│  64k, T/C    │     │  data.py     clean + feature engineer        │
-└──────────────┘     │  uplift.py   EconML X-Learner → CATE,        │
-                     │              4 buckets, Qini/AUUC            │
-                     │  allocate.py PuLP knapsack → marginal ROI,   │
-                     │              restraint metrics              │
-                     │  bandit.py   Thompson sampling → best channel│
-                     │                    │                         │
-                     │              artifacts/*.parquet,*.json      │
-                     └────────────────────┼─────────────────────────┘
-                                          │
-                     ┌────────────────────▼─────────────────────────┐
+│  64k, T/C    │     │  data.py        clean + feature engineer     │
+└──────────────┘     │  uplift.py      EconML X-Learner -> CATE,    │
+                     │                 4 buckets, Qini/AUUC         │
+                     │  live_model.py  S-Learner on behavior        │
+                     │  allocate.py    PuLP knapsack -> marginal ROI│
+                     │  bandit.py      Thompson sampling -> channel │
+                     │                     │                        │
+                     │                 artifacts/*.parquet,*.json   │
+                     └─────────────────────┼────────────────────────┘
+                                           │
+                     ┌─────────────────────▼────────────────────────┐
                      │              API  (/api, FastAPI)            │
-                     │  /segments /customers /qini /allocation      │
-                     │  /allocate /bandit /explain ──► Claude       │
-                     └────────────────────┼─────────────────────────┘
-                                          │  (Next.js /api proxy)
-                     ┌────────────────────▼─────────────────────────┐
-                     │           DASHBOARD  (/web, Next.js)         │
-                     │  restraint metrics · segment scatter ·       │
-                     │  decision inspector (Claude) · marginal-ROI  │
-                     │  slider · Qini curve · bandit convergence    │
+                     │  batch:  /segments /customers /qini          │
+                     │          /allocation /bandit /benchmark      │
+                     │  live:   /track /visitor /store/* /strategy  │
+                     │  /explain ──► Claude (template fallback)     │
+                     └─────────────────────┼────────────────────────┘
+                                           │  (Next.js /api proxy)
+                     ┌─────────────────────▼────────────────────────┐
+                     │            WEB  (/web, Next.js)              │
+                     │  / dashboard · /strategy · /store · /console │
+                     │  restraint metrics · Qini · marginal-ROI ·   │
+                     │  bandit · live storefront · per-product cards│
                      └──────────────────────────────────────────────┘
 ```
 
+In production the whole stack runs in one container (`Dockerfile` + `render.yaml`): Next
+serves the UI and proxies `/api/*` to FastAPI on an internal port, so it is one URL.
+
 ## Data flow
 
-1. **Ingest** — Hillstrom RCT (random treatment/control) → causal ground truth.
-2. **Estimate** — X-Learner predicts each customer's incremental response (CATE).
-3. **Segment** — (baseline, uplift) → Persuadable / Sure Thing / Lost Cause / Sleeping Dog.
-4. **Validate** — Qini curve + AUUC on a holdout prove targeting beats random.
-5. **Allocate** — knapsack picks the action portfolio maximising incremental revenue
-   under budget; the marginal-ROI curve exposes the diminishing-returns knee.
-6. **Orchestrate** — a Thompson-sampling bandit learns the best channel per segment.
-7. **Explain** — Claude turns each decision into plain-English rationale + override.
+1. **Ingest** — Hillstrom RCT (random treatment/control) gives causal ground truth.
+2. **Estimate** — an X-Learner predicts each customer's incremental response (CATE); a
+   second S-Learner scores live web behavior in real time.
+3. **Segment** — (baseline, uplift) maps to Persuadable / Sure Thing / Lost Cause /
+   Sleeping Dog via data-driven quantile cuts; negative uplift is always a Sleeping Dog.
+4. **Validate** — Qini curve + AUUC on a holdout, plus observed treated-vs-control rates
+   straight from the RCT (measured, not modelled).
+5. **Allocate** — a 0/1 knapsack picks the action portfolio that maximizes incremental
+   revenue under budget; the marginal-ROI curve exposes the diminishing-returns knee.
+6. **Orchestrate** — a Thompson-sampling bandit learns the best channel per segment; a
+   timing policy decides in-app vs off-site and when to stay silent.
+7. **Dose** — Minimum Effective Dose picks the smallest discount that still converts.
+8. **Explain** — Claude turns each decision into a plain-English rationale (template
+   fallback when no API key is set).
 
 ## Why each choice
 
-| Decision | Reason |
-| --- | --- |
-| Hillstrom RCT | Real randomized data — causal claims survive expert scrutiny |
-| X-Learner (EconML) | Strong CATE estimator for imbalanced treatment groups |
-| Qini / AUUC | The correct metric for uplift — not accuracy/F1 |
-| Knapsack allocator | Turns scores into a budget decision a CFO understands |
-| Thompson bandit | Online channel learning that visibly self-optimizes |
-| Claude explain layer | Trust + human-in-the-loop, the demo's memorable moment |
+| Decision            | Reason                                                           |
+| ------------------- | --------------------------------------------------------------- |
+| Hillstrom RCT       | Real randomized data — causal claims survive expert scrutiny    |
+| X-Learner (EconML)  | Strong CATE estimator for imbalanced treatment groups           |
+| S-Learner (live)    | Sign-stable uplift from sparse, real-time behavioral signals    |
+| Qini / AUUC + RCT   | The correct proof for uplift — not accuracy / F1                |
+| Knapsack allocator  | Turns scores into a budget decision a CFO understands           |
+| Thompson bandit     | Online channel learning that visibly self-optimizes            |
+| Claude explain layer| Trust + human-in-the-loop on every decision, including silence  |
