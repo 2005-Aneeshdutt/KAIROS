@@ -118,6 +118,10 @@ export const store = {
   analytics: () => get<any>("/analytics/live", null),
   strategy: () => get<any>("/strategy", null),
   benchmark: (n = 5000, seed = 42) => get<any>(`/benchmark?n=${n}&seed=${seed}`, null),
+  agent: (goal: string) =>
+    post<{ answer: string; steps: { tool: string; input: any }[]; source: string }>(
+      "/agent", { goal }, { answer: "", steps: [], source: "error" }
+    ),
 };
 
 export type Pattern = { code: string; label: string; detail: string; intent: "up" | "down"; icon: string };

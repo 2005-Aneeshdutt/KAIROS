@@ -330,6 +330,23 @@ def allocate(req: AllocateReq):
     cust = int(np.interp(req.budget, xs, [p["customers"] for p in from_curve]))
     return {"budget": req.budget, "revenue": round(rev, 2), "customers_targeted": cust}
 
+class AgentReq(BaseModel):
+    goal: str
+
+@app.post("/agent")
+def agent_endpoint(req: AgentReq):
+    """A tool-using Claude agent that plans a campaign by calling the system's own
+    functions (segments, allocation, benchmark, strategy) and grounding its answer in them."""
+    import agent as ag
+    executors = {
+        "get_segments": lambda: segments(),
+        "solve_allocation": lambda budget: allocate(AllocateReq(budget=float(budget))),
+        "run_benchmark": lambda: {k: sim.benchmark(n=4000)[k]
+                                  for k in ("traditional", "conductor", "deltas")},
+        "get_strategy": lambda: trk.strategy_report(),
+    }
+    return ag.run(req.goal, executors)
+
 def _rows(df: pd.DataFrame) -> list[dict]:
     recs = []
     for _, r in df.iterrows():

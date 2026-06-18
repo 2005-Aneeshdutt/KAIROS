@@ -68,6 +68,8 @@ export default function StrategyPage() {
         <Stat label="Margin right-sized" value={fmtUSD(h.margin_right_sized ?? 0)} accent="text-epsilon" sub={h.avg_discount_depth != null ? `avg dose ${h.avg_discount_depth}% vs flat 20%` : "Minimum Effective Dose"} />
       </section>
 
+      <AgentPanel />
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {/* Funnel */}
         <div className="card lg:col-span-1">
@@ -193,6 +195,75 @@ export default function StrategyPage() {
         Strategy recomputed live from the connected storefront · spend only where it changes the outcome.
       </footer>
     </main>
+  );
+}
+
+function AgentPanel() {
+  const PRESETS = [
+    "I have a $5,000 budget this week — where should I spend it and where should I hold back?",
+    "Make the case for Kairos vs a traditional batch-and-blast campaign, with numbers.",
+    "Which segment is bleeding the most budget right now, and what should I do?",
+  ];
+  const [goal, setGoal] = useState("");
+  const [res, setRes] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+
+  async function ask(q?: string) {
+    const g = (q ?? goal).trim();
+    if (!g) return;
+    setGoal(g); setLoading(true); setRes(null);
+    const r = await store.agent(g);
+    setRes(r); setLoading(false);
+  }
+
+  return (
+    <section className="card mb-6 border border-epsilon/30">
+      <div className="card-title flex items-center gap-2">
+        AI Strategist
+        <span className="pill text-[10px] bg-epsilon/15 text-epsilon border border-epsilon/30">tool-using agent</span>
+      </div>
+      <p className="text-xs text-slate-500 mt-1 mb-3">
+        A Claude agent that plans by calling the system&apos;s own tools — segments, allocation,
+        benchmark, strategy — and grounds its answer in the real numbers.
+      </p>
+      <div className="flex gap-2">
+        <input value={goal} onChange={(e) => setGoal(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && ask()}
+          placeholder="Ask the strategist a goal…"
+          className="flex-1 bg-panel2 border border-line rounded-lg px-3 py-2 text-sm outline-none focus:border-epsilon/50" />
+        <button onClick={() => ask()} disabled={loading}
+          className="text-xs font-semibold px-4 py-2 rounded-lg bg-epsilon/20 text-epsilon hover:bg-epsilon/30 disabled:opacity-50">
+          {loading ? "Thinking…" : "Ask"}
+        </button>
+      </div>
+      <div className="flex flex-wrap gap-1.5 mt-2">
+        {PRESETS.map((p) => (
+          <button key={p} onClick={() => ask(p)} disabled={loading}
+            className="text-[11px] text-slate-400 bg-panel2 border border-line rounded-full px-2.5 py-1 hover:text-slate-200">
+            {p.length > 48 ? p.slice(0, 48) + "…" : p}
+          </button>
+        ))}
+      </div>
+      {res && (
+        <div className="mt-3">
+          {res.steps?.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {res.steps.map((s: any, i: number) => (
+                <span key={i} className="text-[10px] font-mono bg-black/40 border border-line rounded px-2 py-0.5 text-emerald-300">
+                  → {s.tool}{s.input && Object.keys(s.input).length ? `(${JSON.stringify(s.input)})` : "()"}
+                </span>
+              ))}
+            </div>
+          )}
+          <div className="bg-panel2 border border-line rounded-xl p-3 text-sm text-slate-200 whitespace-pre-wrap leading-relaxed">
+            {res.answer}
+          </div>
+          {res.source !== "claude" && (
+            <div className="text-[10px] text-slate-500 mt-1">source: {res.source}</div>
+          )}
+        </div>
+      )}
+    </section>
   );
 }
 
