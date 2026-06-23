@@ -25,6 +25,9 @@ SYSTEM = (
     "knee.revenue) — the optimal place to STOP, because every dollar past the knee earns less. If the "
     "requested budget is past the knee (past_knee=true), do NOT recommend spending it all: advise "
     "stopping at the knee and quote the knee's customers and revenue as the recommended target. "
+    "Because it ranks EVERYONE, the knee's customer count can exceed the Persuadable count from "
+    "get_segments — it covers all Persuadables plus the next-highest-ROI customers up to the knee; if "
+    "you cite both numbers, add one short clause explaining this so they don't look contradictory. "
     "Be concise and concrete, cite the figures you pulled, emphasise incrementality and restraint, "
     "and finish with a short, prioritised action plan (SPEND / HOLD / SUPPRESS / SKIP)."
 )

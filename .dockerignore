@@ -8,3 +8,5 @@ ml/data
 docs
 build_deck.py
 *.pptx
+**/.env
+**/*.db

@@ -356,7 +356,7 @@ def agent_endpoint(req: AgentReq):
     executors = {
         "get_segments": lambda: segments(),
         "solve_allocation": lambda budget: allocate(AllocateReq(budget=float(budget))),
-        "run_benchmark": lambda: {k: sim.benchmark(n=4000)[k]
+        "run_benchmark": lambda: {k: sim.benchmark(n=64000)[k]
                                   for k in ("traditional", "conductor", "deltas")},
         "get_strategy": lambda: trk.strategy_report(),
     }
