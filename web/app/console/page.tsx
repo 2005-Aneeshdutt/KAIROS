@@ -40,7 +40,7 @@ export default function ConsolePage() {
         <div className="max-w-[1100px] mx-auto px-6 h-14 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-2.5 h-7 bg-epsilon rounded-sm" />
-            <h1 className="font-bold tracking-tight">Conductor Console</h1>
+            <h1 className="font-bold tracking-tight">Kairos Console</h1>
             <span className="flex items-center gap-1.5 text-xs text-emerald-400 ml-2">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" /> live · {uid}
             </span>
@@ -64,12 +64,12 @@ export default function ConsolePage() {
               <span className="text-[10px] uppercase tracking-widest text-slate-500">{econ.basis}</span>
             </div>
             <div className="grid grid-cols-3 gap-4">
-              <EconCol title="🚫 Without Conductor" tone="bad"
+              <EconCol title="🚫 Without Kairos" tone="bad"
                 rows={[["Messages sent", econ.traditional.messages], ["Budget spent", `$${econ.traditional.budget}`], ["Annoyance risk", `${econ.traditional.annoyance_pct}%`]]} />
-              <EconCol title="✅ With Conductor" tone="good"
+              <EconCol title="✅ With Kairos" tone="good"
                 rows={[["Messages sent", econ.conductor.messages], ["Budget spent", `$${econ.conductor.budget}`], ["Annoyance risk", `${econ.conductor.annoyance_pct}%`]]} />
               <div className="rounded-xl p-3 border border-epsilon/30 bg-epsilon/5">
-                <div className="text-[10px] uppercase tracking-widest text-epsilon mb-2">Conductor advantage</div>
+                <div className="text-[10px] uppercase tracking-widest text-epsilon mb-2">Kairos advantage</div>
                 <Delta k="Messages saved" v={econ.delta.messages_saved} />
                 <Delta k="Budget saved" v={`$${econ.delta.budget_saved}`} />
                 <Delta k="Annoyance avoided" v={`${econ.delta.annoyance_avoided_pct}%`} />
@@ -198,7 +198,7 @@ export default function ConsolePage() {
 
             <div className="card">
               <div className="flex gap-1 mb-3 text-xs">
-                {([["data", "📡 Data layer"], ["with", "✅ With Conductor"], ["without", "🚫 Without Conductor"]] as const).map(([k, label]) => (
+                {([["data", "📡 Data layer"], ["with", "✅ With Kairos"], ["without", "🚫 Without Kairos"]] as const).map(([k, label]) => (
                   <button key={k} onClick={() => setTab(k)}
                     className={`px-3 py-1.5 rounded-lg font-semibold transition ${tab === k ? "bg-panel2 text-white" : "text-slate-500 hover:text-slate-300"}`}>{label}</button>
                 ))}

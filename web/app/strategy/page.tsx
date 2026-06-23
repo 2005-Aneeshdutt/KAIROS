@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { store, fmtUSD, BUCKET_COLOR } from "@/lib/api";
+import { AgentPanel } from "@/components/agent-panel";
 
 export default function StrategyPage() {
   const [s, setS] = useState<any>(null);
@@ -139,7 +140,7 @@ export default function StrategyPage() {
       {/* Channel strategy */}
       <section className="mt-6 card">
         <div className="card-title">Channel strategy — the orchestration portfolio</div>
-        <p className="text-xs text-slate-500 mb-3">Conductor picks from {channels.length} channels by context (cost × immediacy × timing). On-site we nudge in-app for free; off-site channels only fire once the shopper leaves.</p>
+        <p className="text-xs text-slate-500 mb-3">Kairos picks from {channels.length} channels by context (cost × immediacy × timing). On-site we nudge in-app for free; off-site channels only fire once the shopper leaves.</p>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
           {channels.map((c: any) => (
             <div key={c.channel} className="bg-panel2 border border-line rounded-lg px-3 py-2 flex items-center justify-between">
@@ -164,7 +165,7 @@ export default function StrategyPage() {
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="card-title mb-0 flex items-center gap-2">Head-to-head benchmark
             <span className="pill text-[10px] bg-amber-500/15 text-amber-300 border border-amber-500/30">illustrative simulation</span>
-            <span className="text-[10px] font-normal text-slate-500">· {bench ? `${bench.n.toLocaleString()} customers, seed ${bench.seed}` : "Traditional vs Conductor"}</span></div>
+            <span className="text-[10px] font-normal text-slate-500">· {bench ? `${bench.n.toLocaleString()} customers, seed ${bench.seed}` : "Traditional vs Kairos"}</span></div>
           <div className="flex gap-2">
             <button onClick={() => runBenchmark(42)} disabled={benchLoading} className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-line hover:bg-panel2 disabled:opacity-50">{benchLoading ? "Running…" : "Re-run (seed 42)"}</button>
             <button onClick={() => runBenchmark(Math.floor(Math.random() * 9999))} disabled={benchLoading} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-epsilon/20 text-epsilon hover:bg-epsilon/30 disabled:opacity-50">Random seed</button>
@@ -182,9 +183,9 @@ export default function StrategyPage() {
             </div>
             <div className="grid md:grid-cols-2 gap-3">
               <BenchWorld title="🚫 Traditional" tone="bad" w={bench.traditional} />
-              <BenchWorld title="✅ Conductor" tone="good" w={bench.conductor} />
+              <BenchWorld title="✅ Kairos" tone="good" w={bench.conductor} />
             </div>
-            <p className="text-xs text-slate-500 mt-3">Traditional blasts the top half by propensity (2 touches + blanket 20% off); Conductor sends one right-sized touch to Persuadables only, holds Sure Things, suppresses Sleeping Dogs.</p>
+            <p className="text-xs text-slate-500 mt-3">Traditional blasts the top half by propensity (2 touches + blanket 20% off); Kairos sends one right-sized touch to Persuadables only, holds Sure Things, suppresses Sleeping Dogs.</p>
           </>
         ) : (
           <p className="text-sm text-slate-500 py-6 text-center">{benchLoading ? "Running benchmark…" : "Benchmark unavailable."}</p>
@@ -195,75 +196,6 @@ export default function StrategyPage() {
         Strategy recomputed live from the connected storefront · spend only where it changes the outcome.
       </footer>
     </main>
-  );
-}
-
-function AgentPanel() {
-  const PRESETS = [
-    "I have a $5,000 budget this week — where should I spend it and where should I hold back?",
-    "Make the case for Kairos vs a traditional batch-and-blast campaign, with numbers.",
-    "Which segment is bleeding the most budget right now, and what should I do?",
-  ];
-  const [goal, setGoal] = useState("");
-  const [res, setRes] = useState<any>(null);
-  const [loading, setLoading] = useState(false);
-
-  async function ask(q?: string) {
-    const g = (q ?? goal).trim();
-    if (!g) return;
-    setGoal(g); setLoading(true); setRes(null);
-    const r = await store.agent(g);
-    setRes(r); setLoading(false);
-  }
-
-  return (
-    <section className="card mb-6 border border-epsilon/30">
-      <div className="card-title flex items-center gap-2">
-        AI Strategist
-        <span className="pill text-[10px] bg-epsilon/15 text-epsilon border border-epsilon/30">tool-using agent</span>
-      </div>
-      <p className="text-xs text-slate-500 mt-1 mb-3">
-        A Claude agent that plans by calling the system&apos;s own tools — segments, allocation,
-        benchmark, strategy — and grounds its answer in the real numbers.
-      </p>
-      <div className="flex gap-2">
-        <input value={goal} onChange={(e) => setGoal(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && ask()}
-          placeholder="Ask the strategist a goal…"
-          className="flex-1 bg-panel2 border border-line rounded-lg px-3 py-2 text-sm outline-none focus:border-epsilon/50" />
-        <button onClick={() => ask()} disabled={loading}
-          className="text-xs font-semibold px-4 py-2 rounded-lg bg-epsilon/20 text-epsilon hover:bg-epsilon/30 disabled:opacity-50">
-          {loading ? "Thinking…" : "Ask"}
-        </button>
-      </div>
-      <div className="flex flex-wrap gap-1.5 mt-2">
-        {PRESETS.map((p) => (
-          <button key={p} onClick={() => ask(p)} disabled={loading}
-            className="text-[11px] text-slate-400 bg-panel2 border border-line rounded-full px-2.5 py-1 hover:text-slate-200">
-            {p.length > 48 ? p.slice(0, 48) + "…" : p}
-          </button>
-        ))}
-      </div>
-      {res && (
-        <div className="mt-3">
-          {res.steps?.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mb-2">
-              {res.steps.map((s: any, i: number) => (
-                <span key={i} className="text-[10px] font-mono bg-black/40 border border-line rounded px-2 py-0.5 text-emerald-300">
-                  → {s.tool}{s.input && Object.keys(s.input).length ? `(${JSON.stringify(s.input)})` : "()"}
-                </span>
-              ))}
-            </div>
-          )}
-          <div className="bg-panel2 border border-line rounded-xl p-3 text-sm text-slate-200 whitespace-pre-wrap leading-relaxed">
-            {res.answer}
-          </div>
-          {res.source !== "claude" && (
-            <div className="text-[10px] text-slate-500 mt-1">source: {res.source}</div>
-          )}
-        </div>
-      )}
-    </section>
   );
 }
 

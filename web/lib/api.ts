@@ -116,10 +116,12 @@ export const store = {
   sessionEnd: (uid: string, device = "desktop") =>
     post<any>("/session/end", { uid, device }, null),
   analytics: () => get<any>("/analytics/live", null),
+  liveCustomers: () =>
+    get<any>("/live-customers", { count: 0, active_count: 0, buckets: {}, shoppers: [] }),
   strategy: () => get<any>("/strategy", null),
   benchmark: (n = 5000, seed = 42) => get<any>(`/benchmark?n=${n}&seed=${seed}`, null),
   agent: (goal: string) =>
-    post<{ answer: string; steps: { tool: string; input: any }[]; source: string }>(
+    post<{ answer: string; steps: { tool: string; input: any }[]; source: string; model?: string }>(
       "/agent", { goal }, { answer: "", steps: [], source: "error" }
     ),
 };

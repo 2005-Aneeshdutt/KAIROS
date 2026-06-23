@@ -106,9 +106,9 @@ export default function StorePage() {
     setEnded(true);
     if (res?.inbox) setInbox(res.inbox);
     if (res?.delivered) {
-      setToast({ id: Date.now(), msg: "📧 You left — Conductor sent 1 targeted message" });
+      setToast({ id: Date.now(), msg: "📧 You left — Kairos sent 1 targeted message" });
     } else {
-      setToast({ id: Date.now(), msg: "👋 Session ended — Conductor stayed silent (no spend warranted)" });
+      setToast({ id: Date.now(), msg: "👋 Session ended — Kairos stayed silent (no spend warranted)" });
     }
   }
 
@@ -202,7 +202,7 @@ export default function StorePage() {
             <button title="inbox" onClick={openInbox} className="relative hover:scale-110 transition">📧{inbox.length - seenInbox > 0 ? <Badge n={inbox.length - seenInbox} /> : null}</button>
             <span title="wishlist" className="relative">♡{profile?.wishlist?.length ? <Badge n={profile.wishlist.length} /> : null}</span>
             <button title="cart" onClick={() => profile?.cart?.length && openCheckout()} className="relative hover:scale-110 transition">🛒{profile?.cart?.length ? <Badge n={profile.cart.length} /> : null}</button>
-            <Link href="/console" target="_blank" className="text-white text-xs px-2.5 py-1 rounded-md" style={{ background: "#0d1320" }}>● Conductor console</Link>
+            <Link href="/console" target="_blank" className="text-white text-xs px-2.5 py-1 rounded-md" style={{ background: "#0d1320" }}>● Kairos console</Link>
           </div>
         </div>
         <div className="max-w-[1500px] mx-auto px-5 flex gap-1 overflow-x-auto pb-2">
@@ -288,7 +288,7 @@ export default function StorePage() {
             <div className="flex items-center justify-between flex-wrap gap-3">
               <div>
                 <div className="text-sm font-bold flex items-center gap-2">
-                  🎁 Conductor assembled a bundle for you
+                  🎁 Kairos assembled a bundle for you
                   <span className="text-[10px] font-semibold text-white px-2 py-0.5 rounded-full" style={{ background: BRAND }}>{bundle.discount_pct}% OFF</span>
                 </div>
                 <div className="flex items-center gap-2 mt-2">
@@ -624,13 +624,13 @@ function InboxModal({ mails, onClose, onOpenProduct }: { mails: InboxMail[]; onC
     <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4" onClick={onClose}>
       <div onClick={(e) => e.stopPropagation()} className="bg-white rounded-2xl w-[min(820px,96vw)] h-[min(560px,90vh)] shadow-2xl overflow-hidden flex flex-col">
         <div className="px-5 py-3 border-b border-slate-200 flex items-center justify-between bg-slate-50">
-          <div className="font-bold flex items-center gap-2">📧 Inbox <span className="text-xs font-normal text-slate-400">— messages Conductor decided were worth sending</span></div>
+          <div className="font-bold flex items-center gap-2">📧 Inbox <span className="text-xs font-normal text-slate-400">— messages Kairos decided were worth sending</span></div>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-lg">✕</button>
         </div>
         {mails.length === 0 ? (
           <div className="flex-1 flex flex-col items-center justify-center text-slate-400 text-sm">
             <div className="text-4xl mb-2">📭</div>
-            No targeted messages yet. Browse a few products — Conductor only emails when it changes the outcome.
+            No targeted messages yet. Browse a few products — Kairos only emails when it changes the outcome.
           </div>
         ) : (
           <div className="flex-1 grid grid-rows-[auto_1fr] sm:grid-rows-1 sm:grid-cols-[240px_1fr] overflow-hidden">

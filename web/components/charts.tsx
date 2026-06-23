@@ -24,7 +24,7 @@ export function QiniChart({ data }: { data: { x: number[]; y: number[]; auuc: nu
         <XAxis dataKey="x" tickFormatter={(v) => `${Math.round(v * 100)}%`} {...axis} />
         <YAxis {...axis} />
         <Tooltip contentStyle={tip} formatter={(v: number) => v.toFixed(3)} />
-        <Area type="monotone" dataKey="model" stroke="#e6005a" strokeWidth={2} fill="url(#qini)" name="Conductor" />
+        <Area type="monotone" dataKey="model" stroke="#e6005a" strokeWidth={2} fill="url(#qini)" name="Kairos" />
         <Line type="monotone" dataKey="random" stroke="#5b6680" strokeDasharray="4 4" dot={false} name="Random" />
       </AreaChart>
     </ResponsiveContainer>
@@ -69,7 +69,7 @@ export function BanditChart({ curve }: { curve: any[] }) {
         <YAxis {...axis} />
         <Tooltip contentStyle={tip} />
         <Line type="monotone" dataKey="oracle" stroke="#5b6680" strokeDasharray="4 4" dot={false} name="Oracle (ceiling)" />
-        <Line type="monotone" dataKey="thompson" stroke="#e6005a" strokeWidth={2} dot={false} name="Conductor (learning)" />
+        <Line type="monotone" dataKey="thompson" stroke="#e6005a" strokeWidth={2} dot={false} name="Kairos (learning)" />
         <Line type="monotone" dataKey="random" stroke="#64748b" strokeWidth={1.5} dot={false} name="Random" />
       </LineChart>
     </ResponsiveContainer>

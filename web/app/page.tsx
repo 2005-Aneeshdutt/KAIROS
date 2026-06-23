@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { api, store, BUCKET_COLOR, Customer, fmtUSD, Segment } from "@/lib/api";
 import { BanditChart, MarginalRoiChart, QiniChart, SegmentScatter } from "@/components/charts";
+import { AgentPanel } from "@/components/agent-panel";
 
 export default function Page() {
   const [segments, setSegments] = useState<Segment[]>([]);
@@ -18,6 +19,7 @@ export default function Page() {
   const [explain, setExplain] = useState<string>("");
   const [loadingExplain, setLoadingExplain] = useState(false);
   const [liveAnalytics, setLiveAnalytics] = useState<any>(null);
+  const [liveShoppers, setLiveShoppers] = useState<any>(null);
 
   useEffect(() => {
     api.segments().then((d) => { setSegments(d.segments); setTotal(d.total_customers); });
@@ -33,7 +35,10 @@ export default function Page() {
   }, []);
 
   useEffect(() => {
-    const poll = () => store.analytics().then((a) => a && setLiveAnalytics(a));
+    const poll = () => {
+      store.analytics().then((a) => a && setLiveAnalytics(a));
+      store.liveCustomers().then((d) => d && setLiveShoppers(d));
+    };
     poll();
     const t = setInterval(poll, 3000);
     return () => clearInterval(t);
@@ -67,7 +72,7 @@ export default function Page() {
         <div>
           <div className="flex items-center gap-3">
             <div className="w-2.5 h-7 bg-epsilon rounded-sm" />
-            <h1 className="text-2xl font-bold tracking-tight">Epsilon Conductor</h1>
+            <h1 className="text-2xl font-bold tracking-tight">Kairos</h1>
           </div>
           <p className="text-slate-400 text-sm mt-1.5 ml-6">
             Causal marketing decisioning — spend only where it changes the outcome.
@@ -92,6 +97,8 @@ export default function Page() {
         <Metric label="Total Business Impact" value={fmtUSD(totalImpact)}
           sub="same budget, better outcome" color="text-epsilon" highlight />
       </section>
+
+      <AgentPanel hero />
 
       {liveAnalytics && liveAnalytics.funnel?.visitors > 0 && (
         <section className="card mb-6">
@@ -141,6 +148,8 @@ export default function Page() {
         </section>
       )}
 
+      <LiveShoppers data={liveShoppers} />
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
 
         <div className="card lg:col-span-2">
@@ -178,7 +187,7 @@ export default function Page() {
                 <Stat k="Pref. channel" v={picked.channel} />
               </div>
               <div className="bg-panel2 border border-line rounded-xl p-3 text-sm text-slate-300 leading-relaxed min-h-[92px]">
-                <div className="text-[10px] uppercase tracking-widest text-epsilon mb-1.5">🤖 Conductor explains</div>
+                <div className="text-[10px] uppercase tracking-widest text-epsilon mb-1.5">🤖 Kairos explains</div>
                 {loadingExplain ? <span className="text-slate-500">Reasoning…</span> : explain}
               </div>
             </div>
@@ -206,7 +215,7 @@ export default function Page() {
           <div className="card-title">Qini curve — causal validation</div>
           <QiniChart data={qini ?? { x: [], y: [], auuc: 0 }} />
           <p className="text-xs text-slate-500 mt-1">
-            Conductor front-loads real lift vs. random targeting. AUUC <span className="text-epsilon">+{(qini?.auuc ?? 0).toFixed(3)}</span>.
+            Kairos front-loads real lift vs. random targeting. AUUC <span className="text-epsilon">+{(qini?.auuc ?? 0).toFixed(3)}</span>.
           </p>
         </div>
 
@@ -228,7 +237,7 @@ export default function Page() {
       </div>
 
       <footer className="text-center text-xs text-slate-600 mt-8">
-        Epsilon Conductor · EconML X-Learner · PuLP knapsack · Thompson bandit · Claude ·
+        Kairos · EconML X-Learner · PuLP knapsack · Thompson bandit · Claude ·
         {econ?.basis === "measured" ? " measured on Hillstrom RCT" : " projected at scale"}
       </footer>
     </main>
@@ -252,6 +261,66 @@ function LiveStat({ label, value, accent, sub }: { label: string; value: string;
       <div className={`text-xl font-bold tabular-nums ${accent ?? "text-slate-100"}`}>{value}</div>
       {sub && <div className="text-[10px] text-slate-500">{sub}</div>}
     </div>
+  );
+}
+
+function LiveShoppers({ data }: { data: any }) {
+  const shoppers: any[] = data?.shoppers ?? [];
+  const active = data?.active_count ?? 0;
+  return (
+    <section className="card mb-6">
+      <div className="flex items-center justify-between mb-3">
+        <div className="card-title mb-0 flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" /> Live shoppers — who&apos;s on the site now
+        </div>
+        <span className="text-xs text-slate-400">
+          <span className="text-emerald-400 font-semibold tabular-nums">{active}</span> active · {shoppers.length} tracked
+        </span>
+      </div>
+      {shoppers.length === 0 ? (
+        <p className="text-sm text-slate-500 py-6 text-center">
+          No shoppers yet — open the{" "}
+          <a className="text-epsilon hover:underline" href="/store" target="_blank" rel="noreferrer">storefront</a>{" "}
+          in another tab (or share the link with someone) and activity shows up here live.
+        </p>
+      ) : (
+        <div className="overflow-hidden rounded-xl border border-line">
+          <table className="w-full text-sm">
+            <thead className="bg-panel2 text-[10px] uppercase tracking-wider text-slate-500">
+              <tr>
+                <th className="text-left font-medium px-3 py-2">Shopper</th>
+                <th className="text-left font-medium px-3 py-2">Segment</th>
+                <th className="text-left font-medium px-3 py-2">Intent</th>
+                <th className="text-right font-medium px-3 py-2">Events</th>
+                <th className="text-left font-medium px-3 py-2">Looking at</th>
+                <th className="text-right font-medium px-3 py-2">Last seen</th>
+              </tr>
+            </thead>
+            <tbody>
+              {shoppers.slice(0, 12).map((s: any) => (
+                <tr key={s.uid} className={`border-t border-line ${s.active ? "" : "opacity-50"}`}>
+                  <td className="px-3 py-2 font-mono text-xs text-slate-300">
+                    <span className={`inline-block w-1.5 h-1.5 rounded-full mr-2 ${s.active ? "bg-emerald-400" : "bg-slate-600"}`} />
+                    {s.uid}{s.devices?.length > 1 && <span className="text-slate-500"> · {s.devices.length} dev</span>}
+                  </td>
+                  <td className="px-3 py-2">
+                    <span className="pill text-[10px]" style={{ background: (BUCKET_COLOR[s.bucket] ?? "#64748b") + "22", color: BUCKET_COLOR[s.bucket] ?? "#94a3b8" }}>{s.bucket}</span>
+                  </td>
+                  <td className="px-3 py-2 w-28">
+                    <div className="h-1.5 bg-panel2 rounded-full overflow-hidden">
+                      <div className="h-full bg-epsilon" style={{ width: `${Math.min(s.intent_score ?? 0, 100)}%` }} />
+                    </div>
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums text-slate-300">{s.events}</td>
+                  <td className="px-3 py-2 text-slate-400 text-xs">{s.top_product ?? "—"}</td>
+                  <td className="px-3 py-2 text-right text-xs text-slate-500 tabular-nums">{(s.seconds_ago ?? 0) <= 2 ? "now" : `${s.seconds_ago}s ago`}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
   );
 }
 

@@ -2,7 +2,7 @@ import "./globals.css";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Epsilon Conductor",
+  title: "Kairos",
   description: "Causal marketing decisioning — spend only where it changes the outcome.",
 };
 
