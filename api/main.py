@@ -184,7 +184,7 @@ def track(req: TrackReq):
     v = trk.STORE.track(req.uid, req.model_dump())
     return {
         "stored_event": v.events[-1],
-        "profile": trk.profile(v),
+        "profile": trk.profile(v, record=True),
         "next_best_action": trk.next_best_action(v, req.device),
         "mail": trk.mail_simulation(v, req.device),
         "patterns": trk.detect_patterns(v),
@@ -197,7 +197,7 @@ def track(req: TrackReq):
 def visitor(uid: str):
     v = trk.STORE.visitor(uid)
     dev = v.devices[-1] if v.devices else "desktop"
-    return {"profile": trk.profile(v), "next_best_action": trk.next_best_action(v, dev),
+    return {"profile": trk.profile(v, record=True), "next_best_action": trk.next_best_action(v, dev),
             "mail": trk.mail_simulation(v, dev), "recent": v.events[-25:][::-1],
             "patterns": trk.detect_patterns(v), "bundle": trk.detect_bundle(v),
             "economics": trk.session_economics(v), "inbox": v.inbox[::-1],
@@ -246,7 +246,7 @@ def suggestion(uid: str, device: str = "mobile"):
     v = trk.STORE.visitor(uid)
     v.add_device(device)
     return {"identity_resolved": len(v.devices) > 1, "devices": v.devices,
-            "profile": trk.profile(v), "next_best_action": trk.next_best_action(v, device),
+            "profile": trk.profile(v, record=True), "next_best_action": trk.next_best_action(v, device),
             "mail": trk.mail_simulation(v, device)}
 
 @app.get("/visitor/{uid}/stream")
@@ -258,7 +258,7 @@ async def visitor_stream(uid: str):
             if len(v.events) != last:
                 last = len(v.events)
                 payload = {
-                    "profile": trk.profile(v),
+                    "profile": trk.profile(v, record=True),
                     "recent": v.events[-8:],
                     "next_best_action": trk.next_best_action(v, v.devices[-1] if v.devices else "desktop"),
                 }

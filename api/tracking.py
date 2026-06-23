@@ -538,7 +538,7 @@ def _interest_intent(views, dwell_s, reviews, in_cart, in_wish, bought) -> int:
         return int(min(80, 40 + engagement * 0.4))
     return int(min(70, engagement))
 
-def profile(v: Visitor) -> dict:
+def profile(v: Visitor, record: bool = False) -> dict:
     views = _product_view_counts(v)
     total_views = sum(views.values())
     top_pid = max(views, key=views.get) if views else None
@@ -597,7 +597,7 @@ def profile(v: Visitor) -> dict:
         "inc_value": model["inc_value"] if model else None,
         "scored_by": model["scored_by"] if model else "heuristic",
     }
-    if v.events and model:
+    if record and v.events and model:
         LIVE_SHOPPERS[v.uid] = {
             "uid": v.uid, "bucket": segment, "base_rate": model["base_rate"],
             "uplift": model["uplift"], "inc_value": model["inc_value"],
