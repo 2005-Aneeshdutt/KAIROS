@@ -12,4 +12,4 @@ services:
       - key: OPENROUTER_API_KEY
         sync: false
       - key: OPENROUTER_MODEL
-        value: qwen/qwen3-235b-a22b-2507
+        value: meta-llama/llama-3.3-70b-instruct
