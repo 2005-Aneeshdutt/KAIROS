@@ -33,7 +33,12 @@ proves it with causal metrics (Qini / AUUC), not accuracy.
 - **Restraint, measured in dollars** — Revenue Generated / Budget Saved / Revenue Protected.
 - **AI Strategist agent** — a tool-using agent that plans a campaign by calling the system's
   own tools (segments, allocation, benchmark, strategy) and grounding its answer in the real
-  numbers. Works with no API key; upgrades to an LLM automatically if one is configured.
+  numbers. Runs a deterministic planner with no key; upgrades to a hosted LLM via **OpenRouter**
+  (any tool-capable model) automatically when `OPENROUTER_API_KEY` is set.
+- **Live, multi-user analytics** — every shopper on the site is scored and segmented in real
+  time; the dashboard shows who's online now and the global funnel updates live.
+- **Persistent by default** — carts, orders and the funnel survive restarts (SQLite locally,
+  Postgres in production via `DATABASE_URL`), with an in-memory fallback.
 - **Explainable** — every decision (including *not* to spend) explained in plain English.
 
 ## Proof — measured, not modelled
@@ -74,6 +79,11 @@ uvicorn main:app --reload          # http://127.0.0.1:8000
 ```
 On Windows PowerShell, run `$env:PYTHONIOENCODING="utf-8"` first.
 
+*Optional — live LLM strategist:* create `api/.env` with `OPENROUTER_API_KEY=sk-or-...`
+(and optionally `OPENROUTER_MODEL`, e.g. `qwen/qwen3-235b-a22b-2507`). Without it the agent
+runs a deterministic planner and `/explain` uses templates — both work offline. The store's
+state persists to `api/kairos.db` (SQLite); set `DATABASE_URL` to use Postgres instead.
+
 **2. Dashboard** (terminal 2)
 ```bash
 cd web
@@ -87,7 +97,7 @@ If the API is down it falls back to empty states rather than crashing.
 
 | URL | What it is |
 | --- | --- |
-| `/`          | Analytics dashboard — buckets, Qini, marginal-ROI, restraint metrics, live revenue |
+| `/`          | Analytics dashboard — AI Strategist, live shoppers online now, buckets, Qini, marginal-ROI, restraint metrics, live revenue |
 | `/strategy`  | Marketing strategy — funnel, segment playbook, channels, real-RCT validation, benchmark |
 | `/store`     | Storefront — shop as a customer (browse, bundle, checkout, cross-device) |
 | `/console`   | Marketer console — real-time view of the live shopper |
@@ -117,8 +127,10 @@ The repo ships a `Dockerfile` + `render.yaml` that run the API and dashboard in 
 container behind one domain (Next serves the UI and proxies `/api/*` to FastAPI internally).
 
 On [Render](https://render.com): **New → Blueprint → select this repo → Deploy Blueprint**.
-You get a single URL serving the whole app. For live Claude explanations, set
-`ANTHROPIC_API_KEY` on the service.
+You get a single URL serving the whole app. For the live AI Strategist + explanations, set
+`OPENROUTER_API_KEY` (and optionally `OPENROUTER_MODEL`) on the service — `ANTHROPIC_API_KEY`
+also works. Set `DATABASE_URL` to a Postgres URL for persistence that survives redeploys;
+otherwise an ephemeral SQLite file is used.
 
 ## Tech stack
 
@@ -130,4 +142,5 @@ You get a single URL serving the whole app. For live Claude explanations, set
 | Optimization  | PuLP 0/1 knapsack, marginal-ROI knee             |
 | Backend       | FastAPI (real-time SSE)                          |
 | Frontend      | Next.js, Recharts                                |
-| Generative    | Claude (per-decision explanations)               |
+| LLM agent     | OpenRouter (tool-using strategist + explanations); Anthropic optional |
+| Persistence   | SQLite (local) / Postgres via `DATABASE_URL`     |

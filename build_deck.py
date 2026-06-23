@@ -76,7 +76,7 @@ def chart_rct():
 def chart_qini():
     q=json.load(open(ART/"qini.json"))
     fig,ax=plt.subplots(figsize=(5.6,4.2)); fig.patch.set_facecolor(BG); ax.set_facecolor(BG)
-    ax.plot(q["x"],q["y"],color=ACCENT,lw=2.4,label="Conductor (uplift)")
+    ax.plot(q["x"],q["y"],color=ACCENT,lw=2.4,label="Kairos (uplift)")
     ax.plot([0,1],[0,1],color=MUTED,lw=1.4,ls="--",label="Random targeting")
     ax.fill_between(q["x"],q["y"],[xx for xx in q["x"]],color=ACCENT,alpha=0.12)
     ax.set_xlim(0,1); ax.set_ylim(0,1.05)
@@ -93,8 +93,8 @@ def chart_twoworld():
     without=[5,19,45]; with_=[1,13.84,4]
     x=np.arange(len(cats)); w=0.36
     fig,ax=plt.subplots(figsize=(6.8,4.0)); fig.patch.set_facecolor(BG); ax.set_facecolor(BG)
-    ax.bar(x-w/2,without,w,label="Without Conductor",color=RED,alpha=0.85)
-    ax.bar(x+w/2,with_,w,label="With Conductor",color=GREEN,alpha=0.9)
+    ax.bar(x-w/2,without,w,label="Without Kairos",color=RED,alpha=0.85)
+    ax.bar(x+w/2,with_,w,label="With Kairos",color=GREEN,alpha=0.9)
     for i,(a,b) in enumerate(zip(without,with_)):
         ax.text(i-w/2,a+0.6,f"{a}",ha="center",color=TEXT,fontsize=9)
         ax.text(i+w/2,b+0.6,f"{b}",ha="center",color=TEXT,fontsize=9)
@@ -173,7 +173,7 @@ def bullets(s,items,l=Inches(0.95),t=Inches(2.0),w=Inches(6.0),size=16,gap=True)
     return tb
 
 def footer(s,n):
-    txt(s,Inches(0.7),Inches(7.05),Inches(6),Inches(0.3),"Epsilon Conductor",10,MUTED)
+    txt(s,Inches(0.7),Inches(7.05),Inches(6),Inches(0.3),"Kairos",10,MUTED)
     txt(s,Inches(11.5),Inches(7.05),Inches(1.2),Inches(0.3),str(n),10,MUTED,align=PP_ALIGN.RIGHT)
 
 def pic(s,path,l,t,w):
@@ -188,7 +188,7 @@ def placeholder(s,l,t,w,h,label):
 
 s=slide()
 accent_bar(s,Inches(0.7),Inches(2.6),Inches(0.18),Inches(2.0))
-txt(s,Inches(1.05),Inches(2.5),Inches(11),Inches(1.2),"Epsilon Conductor",54,TEXT,bold=True)
+txt(s,Inches(1.05),Inches(2.5),Inches(11),Inches(1.2),"Kairos",54,TEXT,bold=True)
 txt(s,Inches(1.08),Inches(3.7),Inches(10.8),Inches(0.7),
     "Causal marketing decisioning — spend only where it changes the outcome.",20,MUTED)
 txt(s,Inches(1.08),Inches(4.5),Inches(10.8),Inches(0.5),
@@ -264,7 +264,7 @@ txt(s,Inches(0.95),Inches(5.4),Inches(4.7),Inches(1.5),
 footer(s,8)
 
 s=slide(); heading(s,"What's actually new","Differentiation")
-rows=[("","Conventional martech","Epsilon Conductor"),
+rows=[("","Conventional martech","Kairos"),
  ("Target signal","Propensity — who'll buy","Uplift / CATE — whose mind we change"),
  ("Live scoring","Rules or stale score","S-Learner on live behaviour"),
  ("Channel","Same blast","Thompson bandit + timing policy"),
@@ -290,7 +290,7 @@ bullets(s,[
  "Dell “Unfrozen”: split dormant customers into Nappers & Dormants — and chose to let some go.",
  "That restraint drove ~6% more revenue and ~8% higher margin. Letting go IS the thesis.",
  "Walgreens: a decade of per-person, cross-channel journeys.",
- "Conductor is the causal layer on top of CORE ID + PeopleCloud — every touch made provably worth it.",
+ "Kairos is the causal layer on top of CORE ID + PeopleCloud — every touch made provably worth it.",
 ], t=Inches(2.1), w=Inches(11.4))
 footer(s,10)
 
@@ -317,6 +317,6 @@ txt(s,Inches(1.08),Inches(5.2),Inches(11),Inches(0.6),
     "Seamless across every channel and device · every decision explainable · every dollar tied to a measured outcome.",15,MUTED)
 txt(s,Inches(1.05),Inches(6.6),Inches(11),Inches(0.4),"Thank you.",16,TEXT,bold=True)
 
-out=ROOT/"docs"/"Epsilon_Conductor.pptx"
+out=ROOT/"docs"/"Kairos.pptx"
 prs.save(str(out))
 print("SAVED:", out, "slides:", len(prs.slides._sldIdLst))

@@ -46,7 +46,7 @@ export function AgentPanel({ hero = false }: { hero?: boolean }) {
       <p className="text-xs text-slate-500 mt-1 mb-3">
         Ask a goal in plain English. The agent decides which of the platform&apos;s tools to call —
         segments, allocation, benchmark, live strategy — then returns a grounded plan. Runs rule-based with
-        no key; upgrades to Claude automatically when one is configured.
+        no key; upgrades to a hosted LLM (via OpenRouter) automatically when a key is configured.
       </p>
 
       <div className="flex gap-2">

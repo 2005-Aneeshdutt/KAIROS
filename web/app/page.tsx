@@ -237,7 +237,7 @@ export default function Page() {
       </div>
 
       <footer className="text-center text-xs text-slate-600 mt-8">
-        Kairos · EconML X-Learner · PuLP knapsack · Thompson bandit · Claude ·
+        Kairos · EconML X-Learner · PuLP knapsack · Thompson bandit · OpenRouter LLM ·
         {econ?.basis === "measured" ? " measured on Hillstrom RCT" : " projected at scale"}
       </footer>
     </main>

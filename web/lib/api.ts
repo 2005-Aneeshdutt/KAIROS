@@ -119,7 +119,7 @@ export const store = {
   liveCustomers: () =>
     get<any>("/live-customers", { count: 0, active_count: 0, buckets: {}, shoppers: [] }),
   strategy: () => get<any>("/strategy", null),
-  benchmark: (n = 5000, seed = 42) => get<any>(`/benchmark?n=${n}&seed=${seed}`, null),
+  benchmark: (n = 64000, seed = 42) => get<any>(`/benchmark?n=${n}&seed=${seed}`, null),
   agent: (goal: string) =>
     post<{ answer: string; steps: { tool: string; input: any }[]; source: string; model?: string }>(
       "/agent", { goal }, { answer: "", steps: [], source: "error" }
@@ -145,6 +145,11 @@ export type Order = {
 
 export function getUid(): string {
   if (typeof window === "undefined") return "ssr";
+  const forced = new URLSearchParams(window.location.search).get("uid");
+  if (forced) {
+    localStorage.setItem("conductor_uid", forced);
+    return forced;
+  }
   let id = localStorage.getItem("conductor_uid");
   if (!id) {
     id = "v" + Math.random().toString(36).slice(2, 10);

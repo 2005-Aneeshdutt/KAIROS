@@ -21,7 +21,10 @@
                      │  batch:  /segments /customers /qini          │
                      │          /allocation /bandit /benchmark      │
                      │  live:   /track /visitor /store/* /strategy  │
-                     │  /explain ──► Claude (template fallback)     │
+                     │          /live-customers (who's online now)  │
+                     │  /agent, /explain ─► OpenRouter LLM          │
+                     │          (planner / template fallback)       │
+                     │  store state ─► SQLite / Postgres (DB layer) │
                      └─────────────────────┼────────────────────────┘
                                            │  (Next.js /api proxy)
                      ┌─────────────────────▼────────────────────────┐
@@ -49,8 +52,14 @@ serves the UI and proxies `/api/*` to FastAPI on an internal port, so it is one 
 6. **Orchestrate** — a Thompson-sampling bandit learns the best channel per segment; a
    timing policy decides in-app vs off-site and when to stay silent.
 7. **Dose** — Minimum Effective Dose picks the smallest discount that still converts.
-8. **Explain** — Claude turns each decision into a plain-English rationale (template
-   fallback when no API key is set).
+8. **Explain** — a hosted LLM (OpenRouter, Anthropic optional) turns each decision into a
+   plain-English rationale (deterministic template fallback when no key is set).
+9. **Act (agent)** — the AI Strategist agent perceives a goal, selects and calls the tools
+   above (segments / allocation / benchmark / strategy), and composes a grounded plan; it is
+   LLM-driven via OpenRouter when a key is set, and a deterministic planner otherwise.
+10. **Persist** — every visitor (cart, orders, events) is written through to a DB (SQLite
+    locally, Postgres via `DATABASE_URL`) and reloaded on startup; global revenue is rebuilt
+    from stored orders, so analytics survive restarts. In-memory fallback if the DB is down.
 
 ## Why each choice
 
@@ -62,4 +71,5 @@ serves the UI and proxies `/api/*` to FastAPI on an internal port, so it is one 
 | Qini / AUUC + RCT   | The correct proof for uplift — not accuracy / F1                |
 | Knapsack allocator  | Turns scores into a budget decision a CFO understands           |
 | Thompson bandit     | Online channel learning that visibly self-optimizes            |
-| Claude explain layer| Trust + human-in-the-loop on every decision, including silence  |
+| LLM agent (OpenRouter)| Tool-using strategist + explanations; planner fallback, no lock-in |
+| Write-through DB     | Persistence + global analytics that survive restarts            |

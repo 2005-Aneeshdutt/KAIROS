@@ -19,7 +19,7 @@ export default function StrategyPage() {
 
   async function runBenchmark(seed = 42) {
     setBenchLoading(true);
-    const b = await store.benchmark(5000, seed);
+    const b = await store.benchmark(64000, seed);
     if (b) setBench(b);
     setBenchLoading(false);
   }
