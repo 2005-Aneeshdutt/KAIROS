@@ -1,14 +1,78 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { store, fmtUSD, BUCKET_COLOR } from "@/lib/api";
 import { AgentPanel } from "@/components/agent-panel";
+import { Shell } from "@/components/shell";
+
+function buildReportHtml(r: any): string {
+  const [summaryRaw, stepsRaw] = String(r.narrative || "").split(/NEXT STEPS:/i);
+  const steps = (stepsRaw || "").split("\n").map((s: string) => s.trim()).filter(Boolean);
+  const segRows = (r.segments || []).map((s: any) =>
+    `<tr><td><b>${s.bucket}</b></td><td>${(s.count || 0).toLocaleString()} (${s.pct}%)</td><td>${(s.avg_uplift * 100).toFixed(1)}%</td><td>${fmtUSD(s.inc_revenue)}</td></tr>`).join("");
+  const stepItems = steps.map((s: string) => `<li>${s.replace(/^\d+[\).\s]*/, "")}</li>`).join("");
+  const recs = (r.live?.recommendations || []).map((x: any) => `<li><b>${x.title}</b> — ${x.detail} <i>(${x.impact})</i></li>`).join("");
+  const b = r.benchmark || {};
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Kairos Strategy Report</title>
+<style>
+body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#1a2233;max-width:820px;margin:40px auto;padding:0 24px;line-height:1.55}
+h1{font-size:28px;margin:0}.accent{color:#e6005a}
+.sub{color:#667;margin:4px 0 24px}
+h2{font-size:14px;text-transform:uppercase;letter-spacing:.5px;color:#e6005a;border-bottom:2px solid #f0d0dd;padding-bottom:6px;margin-top:30px}
+table{width:100%;border-collapse:collapse;margin:8px 0}td,th{text-align:left;padding:8px;border-bottom:1px solid #eee;font-size:14px}
+th{color:#889;font-size:11px;text-transform:uppercase}
+.cards{display:flex;gap:12px;flex-wrap:wrap}.card{flex:1;min-width:140px;border:1px solid #eee;border-radius:10px;padding:12px}
+.card .v{font-size:22px;font-weight:800;color:#e6005a}.card .l{font-size:11px;color:#889;text-transform:uppercase}
+ul{padding-left:20px}li{margin:6px 0;font-size:14px}
+.foot{margin-top:40px;color:#aab;font-size:12px;border-top:1px solid #eee;padding-top:12px}
+@media print{body{margin:0}}
+</style></head><body>
+<h1><span class="accent">●</span> Kairos — Strategy Report</h1>
+<div class="sub">Causal marketing decisioning · generated ${r.generated_at} · ${(r.total_customers || 0).toLocaleString()} customers</div>
+<h2>Executive summary</h2>
+<p>${(summaryRaw || "").trim().replace(/\n/g, "<br>")}</p>
+<h2>Segment breakdown</h2>
+<table><tr><th>Segment</th><th>Customers</th><th>Avg uplift</th><th>Incremental rev</th></tr>${segRows}</table>
+<h2>Optimal spend &amp; measured impact</h2>
+<div class="cards">
+<div class="card"><div class="l">Optimal budget (knee)</div><div class="v">${fmtUSD(r.knee?.budget)}</div></div>
+<div class="card"><div class="l">Customers funded</div><div class="v">${(r.knee?.customers || 0).toLocaleString()}</div></div>
+<div class="card"><div class="l">Incremental revenue</div><div class="v">${fmtUSD(r.knee?.revenue)}</div></div>
+</div>
+<div class="cards" style="margin-top:12px">
+<div class="card"><div class="l">vs Batch-and-blast</div><div class="v">+${b.net_revenue_pct}%</div><div class="l">net revenue</div></div>
+<div class="card"><div class="l">Messages saved</div><div class="v">${Math.abs(b.messages_saved || 0).toLocaleString()}</div></div>
+<div class="card"><div class="l">Spend saved</div><div class="v">${fmtUSD(b.spend_saved)}</div></div>
+<div class="card"><div class="l">ROI</div><div class="v">${b.roi}&times;</div><div class="l">vs ${b.trad_roi}&times; traditional</div></div>
+</div>
+<h2>Live snapshot</h2>
+<p>${r.live?.on_site || 0} shopper(s) on site now. Funnel: ${r.live?.funnel?.visitors || 0} visitors &rarr; ${r.live?.funnel?.carted || 0} carted &rarr; ${r.live?.funnel?.bought || 0} bought.</p>
+${recs ? `<ul>${recs}</ul>` : ""}
+<h2>Recommended next steps</h2>
+<ul>${stepItems}</ul>
+<div class="foot">Kairos · spend only where it changes the outcome · head-to-head is an illustrative simulation; bucket lift validated on the Hillstrom RCT.</div>
+</body></html>`;
+}
 
 export default function StrategyPage() {
   const [s, setS] = useState<any>(null);
   const [bench, setBench] = useState<any>(null);
   const [benchLoading, setBenchLoading] = useState(false);
+  const [dl, setDl] = useState(false);
+
+  async function downloadReport() {
+    setDl(true);
+    const r = await store.report();
+    setDl(false);
+    if (!r) return;
+    const blob = new Blob([buildReportHtml(r)], { type: "text/html" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `Kairos-Strategy-Report-${new Date().toISOString().slice(0, 10)}.html`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
 
   useEffect(() => {
     const poll = () => store.strategy().then((d) => d && setS(d));
@@ -29,7 +93,6 @@ export default function StrategyPage() {
   const f = s?.funnel ?? {};
   const segs = s?.segments ?? [];
   const recs = s?.recommendations ?? [];
-  const channels = s?.channels ?? [];
 
   const funnelSteps = [
     { k: "Visitors", v: f.visitors ?? 0 },
@@ -40,9 +103,9 @@ export default function StrategyPage() {
   const maxF = Math.max(1, ...funnelSteps.map((x) => x.v));
 
   const PRIORITY = { High: "bg-rose-500/20 text-rose-300", Medium: "bg-amber-500/20 text-amber-300", Low: "bg-slate-500/20 text-slate-300" } as Record<string, string>;
-  const KIND = { "on-site": "text-emerald-300", "off-site": "text-sky-300", ambient: "text-violet-300", "in-store": "text-amber-300" } as Record<string, string>;
 
   return (
+    <Shell>
     <main className="max-w-[1300px] mx-auto px-6 py-7">
       <header className="flex items-end justify-between mb-6">
         <div>
@@ -53,9 +116,12 @@ export default function StrategyPage() {
           </div>
           <p className="text-slate-400 text-sm mt-1.5 ml-6">How to market to each shopper — data-backed, computed live from who's in the store right now.</p>
         </div>
-        <div className="flex gap-4 text-sm">
-          <Link href="/" className="text-slate-400 hover:text-white">← Dashboard</Link>
-          <Link href="/store" className="text-epsilon font-semibold hover:underline">Storefront →</Link>
+        <div className="flex flex-col items-end gap-2">
+          <button onClick={downloadReport} disabled={dl}
+            className="text-xs font-semibold px-3 py-2 rounded-lg bg-epsilon/20 text-epsilon hover:bg-epsilon/30 disabled:opacity-50">
+            {dl ? "Preparing…" : "⬇ Download strategy report"}
+          </button>
+          <span className="flex items-center gap-1.5 text-xs text-emerald-400"><span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" /> recomputed live</span>
         </div>
       </header>
 
@@ -137,26 +203,6 @@ export default function StrategyPage() {
         </div>
       </section>
 
-      {/* Channel strategy */}
-      <section className="mt-6 card">
-        <div className="card-title">Channel strategy — the orchestration portfolio</div>
-        <p className="text-xs text-slate-500 mb-3">Kairos picks from {channels.length} channels by context (cost × immediacy × timing). On-site we nudge in-app for free; off-site channels only fire once the shopper leaves.</p>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
-          {channels.map((c: any) => (
-            <div key={c.channel} className="bg-panel2 border border-line rounded-lg px-3 py-2 flex items-center justify-between">
-              <div>
-                <div className="text-sm font-semibold text-slate-100">{c.icon} {c.channel}</div>
-                <div className={`text-[10px] ${KIND[c.kind] ?? "text-slate-400"}`}>{c.kind}</div>
-              </div>
-              <div className="text-right">
-                <div className="text-[11px] text-slate-400 tabular-nums">${c.cost}</div>
-                <div className="text-[9px] text-slate-500">immediacy {c.immediacy}/5</div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-
       {/* Real-RCT validation — the credibility anchor (measured, not modelled) */}
       {bench?.validation && <RctValidation v={bench.validation} />}
 
@@ -196,6 +242,7 @@ export default function StrategyPage() {
         Strategy recomputed live from the connected storefront · spend only where it changes the outcome.
       </footer>
     </main>
+    </Shell>
   );
 }
 

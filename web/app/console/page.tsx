@@ -2,7 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { store, getUid } from "@/lib/api";
+import { store } from "@/lib/api";
+import { Shell } from "@/components/shell";
+import { useLiveData } from "@/lib/use-live";
 
 const SEG_COLOR: Record<string, string> = {
   Persuadable: "#3b82f6", "Sure Thing": "#22c55e", "Lost Cause": "#ef4444",
@@ -11,19 +13,33 @@ const SEG_COLOR: Record<string, string> = {
 const BRAND = "#e31837";
 
 export default function ConsolePage() {
+  const [shoppers, setShoppers] = useState<any[]>([]);
   const [uid, setUid] = useState("");
   const [data, setData] = useState<any>(null);
   const [tab, setTab] = useState<"data" | "with" | "without">("data");
   const timer = useRef<any>(null);
 
+  // Follow whoever is actually browsing: poll the live-shopper list and default
+  // to the most recently active person (or a ?uid= deep-link from the Customers page).
+  useLiveData<any>("/live-customers", (d) => {
+    const list: any[] = d?.shoppers ?? [];
+    setShoppers(list);
+    setUid((cur) => {
+      if (cur && list.some((s) => s.uid === cur)) return cur;
+      const param = typeof window !== "undefined"
+        ? new URLSearchParams(window.location.search).get("uid") : null;
+      if (param) return param;
+      return list[0]?.uid ?? cur;
+    });
+  });
+
   useEffect(() => {
-    const id = getUid();
-    setUid(id);
-    const poll = async () => { const d = await store.visitor(id); if (d) setData(d); };
+    if (!uid) { setData(null); return; }
+    const poll = async () => { const d = await store.visitor(uid); if (d) setData(d); };
     poll();
     timer.current = setInterval(poll, 1200);
     return () => clearInterval(timer.current);
-  }, []);
+  }, [uid]);
 
   const p = data?.profile;
   const nba = data?.next_best_action;
@@ -35,6 +51,7 @@ export default function ConsolePage() {
   const bundle = data?.bundle;
 
   return (
+    <Shell>
     <main className="min-h-screen bg-ink text-slate-200">
       <header className="border-b border-line">
         <div className="max-w-[1100px] mx-auto px-6 h-14 flex items-center justify-between">
@@ -42,19 +59,25 @@ export default function ConsolePage() {
             <div className="w-2.5 h-7 bg-epsilon rounded-sm" />
             <h1 className="font-bold tracking-tight">Kairos Console</h1>
             <span className="flex items-center gap-1.5 text-xs text-emerald-400 ml-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" /> live · {uid}
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" /> live
             </span>
-          </div>
-          <div className="flex gap-4 text-sm">
-            <Link href="/store" className="text-slate-400 hover:text-white">← Storefront</Link>
-            <Link href="/" className="text-slate-400 hover:text-white">Analytics →</Link>
+            {shoppers.length > 0 && (
+              <select value={uid} onChange={(e) => setUid(e.target.value)}
+                className="bg-panel2 border border-line rounded-md text-xs px-2 py-1 ml-1 outline-none focus:border-epsilon/50 max-w-[260px]">
+                {shoppers.map((s) => (
+                  <option key={s.uid} value={s.uid}>
+                    {s.active ? "● " : "○ "}{s.uid} · {s.bucket} · {s.events} ev
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
         </div>
       </header>
 
       <div className="max-w-[1100px] mx-auto px-6 py-6">
         <p className="text-sm text-slate-500 mb-4">
-          The marketer&apos;s real-time view of the shopper currently browsing the store (open the store in another tab and click — this updates live).
+          The marketer&apos;s real-time view of a live shopper — it auto-follows whoever is most active, or pick someone from the selector above. Updates every second.
         </p>
 
         {econ && p && p.events > 0 && (
@@ -211,6 +234,7 @@ export default function ConsolePage() {
         )}
       </div>
     </main>
+    </Shell>
   );
 }
 

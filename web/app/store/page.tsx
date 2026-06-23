@@ -2,10 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
-  store, getUid, Product, ProductDetail, Review, Bundle, Coupon, Redemption, Promotions,
-  Bundle2, InboxMail, Order,
+  store, getUid, getSession, logout, setConsent, Session, Product, ProductDetail, Review, Bundle,
+  Coupon, Redemption, Promotions, Bundle2, InboxMail, Order,
 } from "@/lib/api";
+import { ChatBot } from "@/components/chatbot";
 
 type Loyalty = {
   points: number; tier: string; next_tier: string; to_next: number;
@@ -14,7 +16,7 @@ type Loyalty = {
 type Profile = {
   segment: string; intent: string; intent_score: number; total_views: number;
   top_product: Product | null; top_views: number; cart: Product[]; wishlist: Product[];
-  devices: string[]; events: number; dwell_s: number; loyalty: Loyalty;
+  devices: string[]; events: number; dwell_s: number; loyalty: Loyalty; consent?: boolean;
 };
 
 const BRAND = "#e31837";
@@ -58,13 +60,18 @@ export default function StorePage() {
   const [order, setOrder] = useState<Order | null>(null);
   const [activeDevice, setActiveDevice] = useState<"desktop" | "mobile">("desktop");
   const [ended, setEnded] = useState(false);
+  const [me, setMe] = useState<Session | null>(null);
   const lastView = useRef<Record<string, number>>({});
+  const router = useRouter();
 
   useEffect(() => {
+    const s = getSession();
+    if (!s) { router.replace("/"); return; }
+    setMe(s);
     setUid(getUid());
     store.catalogue().then((d) => { setProducts(d.products); setCats(d.categories); });
     store.promotions().then(setPromos);
-  }, []);
+  }, [router]);
 
   useEffect(() => {
     if (!uid || !products.length) return;
@@ -202,7 +209,28 @@ export default function StorePage() {
             <button title="inbox" onClick={openInbox} className="relative hover:scale-110 transition">📧{inbox.length - seenInbox > 0 ? <Badge n={inbox.length - seenInbox} /> : null}</button>
             <span title="wishlist" className="relative">♡{profile?.wishlist?.length ? <Badge n={profile.wishlist.length} /> : null}</span>
             <button title="cart" onClick={() => profile?.cart?.length && openCheckout()} className="relative hover:scale-110 transition">🛒{profile?.cart?.length ? <Badge n={profile.cart.length} /> : null}</button>
-            <Link href="/console" target="_blank" className="text-white text-xs px-2.5 py-1 rounded-md" style={{ background: "#0d1320" }}>● Kairos console</Link>
+            {me && (
+              <div className="flex items-center gap-2 pl-1">
+                <div className="text-right leading-tight hidden sm:block">
+                  <div className="text-xs font-semibold text-slate-700">{me.name}</div>
+                  <div className="text-[9px] text-slate-400 font-mono">{me.core_id}</div>
+                </div>
+                <button
+                  onClick={async () => {
+                    const nv = !(profile?.consent ?? true);
+                    await setConsent(uid, nv);
+                    const v = await store.visitor(uid);
+                    if (v?.profile) setProfile(v.profile);
+                  }}
+                  title="Personalisation consent (privacy-safe CORE ID)"
+                  className={`text-[10px] px-2 py-1 rounded-md border ${(profile?.consent ?? true) ? "border-emerald-300 text-emerald-600" : "border-amber-400 text-amber-600"}`}>
+                  {(profile?.consent ?? true) ? "Personalisation: On" : "Personalisation: Off"}
+                </button>
+                <Link href="/console" target="_blank" className="text-xs text-white px-2.5 py-1 rounded-md hover:opacity-90" style={{ background: "#0d1320" }}>● Console</Link>
+                <button onClick={() => { logout(); router.replace("/"); }}
+                  className="text-xs text-slate-500 border border-slate-200 rounded-md px-2 py-1 hover:bg-slate-100">Sign out</button>
+              </div>
+            )}
           </div>
         </div>
         <div className="max-w-[1500px] mx-auto px-5 flex gap-1 overflow-x-auto pb-2">
@@ -346,6 +374,7 @@ export default function StorePage() {
         onCheckout={() => { setActiveDevice("mobile"); openCheckout(); }}
         onEndSession={() => { setActiveDevice("mobile"); endSession(); }} />}
       {toast && <Toast key={toast.id} msg={toast.msg} onDone={() => setToast(null)} />}
+      {uid && <ChatBot uid={uid} onProduct={(p) => openDetail(p)} />}
     </main>
   );
 }

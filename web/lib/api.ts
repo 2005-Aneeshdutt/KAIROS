@@ -124,7 +124,70 @@ export const store = {
     post<{ answer: string; steps: { tool: string; input: any }[]; source: string; model?: string }>(
       "/agent", { goal }, { answer: "", steps: [], source: "error" }
     ),
+  people: () => get<{ people: any[] }>("/people", { people: [] }),
+  report: () => get<any>("/report", null),
+  customerStrategy: (coreId: string) => get<any>(`/customer/${encodeURIComponent(coreId)}/strategy`, null),
+  chat: (uid: string, message: string) =>
+    post<{ reply: string; products: any[]; source: string }>(
+      "/chat", { uid, message }, { reply: "Sorry, I had trouble — try again.", products: [], source: "error" }
+    ),
 };
+
+export type Session = { core_id: string; email: string; name: string };
+
+export function getSession(): Session | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return JSON.parse(localStorage.getItem("kairos_session") || "null");
+  } catch {
+    return null;
+  }
+}
+
+export function setSession(s: Session) {
+  localStorage.setItem("kairos_session", JSON.stringify(s));
+}
+
+export function logout() {
+  localStorage.removeItem("kairos_session");
+}
+
+export async function resetDemo(): Promise<void> {
+  try { await fetch("/api/admin/reset", { method: "POST" }); } catch { /* ignore */ }
+}
+
+export async function setConsent(uid: string, consent: boolean): Promise<void> {
+  try {
+    await fetch("/api/consent", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ uid, consent }),
+    });
+  } catch { /* ignore */ }
+}
+
+export async function deletePerson(core_id: string): Promise<void> {
+  try {
+    await fetch(`/api/people/${encodeURIComponent(core_id)}`, { method: "DELETE" });
+  } catch {
+    /* ignore */
+  }
+}
+
+export async function loginUser(email: string, name?: string): Promise<Session> {
+  const r = await fetch("/api/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, name: name || "" }),
+  });
+  if (!r.ok) {
+    const e = await r.json().catch(() => ({}));
+    throw new Error(e.detail || "Login failed");
+  }
+  const d = await r.json();
+  const s: Session = { core_id: d.core_id, email: d.email, name: d.name };
+  setSession(s);
+  return s;
+}
 
 export type Pattern = { code: string; label: string; detail: string; intent: "up" | "down"; icon: string };
 export type Bundle2 = {
@@ -145,6 +208,8 @@ export type Order = {
 
 export function getUid(): string {
   if (typeof window === "undefined") return "ssr";
+  const s = getSession();
+  if (s?.core_id) return s.core_id;        // logged-in COREid is the identity
   const forced = new URLSearchParams(window.location.search).get("uid");
   if (forced) {
     localStorage.setItem("conductor_uid", forced);
