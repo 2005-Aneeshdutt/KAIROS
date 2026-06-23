@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 from functools import lru_cache
 from pathlib import Path
 
@@ -18,7 +19,7 @@ import tracking as trk
 
 ART = Path(__file__).resolve().parents[1] / "ml" / "artifacts"
 
-app = FastAPI(title="Epsilon Conductor API", version="0.1.0")
+app = FastAPI(title="Kairos API", version="0.1.0")
 app.add_middleware(
     CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],
 )
@@ -57,7 +58,9 @@ def bandit() -> dict:
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "artifacts": [p.name for p in ART.glob("*")]}
+    import db
+    return {"status": "ok", "persistence": db.backend(),
+            "artifacts": [p.name for p in ART.glob("*")]}
 
 @app.get("/segments")
 def segments():
@@ -144,11 +147,21 @@ def promotions():
 
 @app.get("/live-customers")
 def live_customers():
+    now = time.time()
     rows = sorted(trk.LIVE_SHOPPERS.values(), key=lambda r: r["ts"], reverse=True)
     counts: dict[str, int] = {}
+    active_count = 0
+    out = []
     for r in rows:
+        secs = int(now - r["ts"])
+        is_active = secs <= 120
+        if is_active:
+            active_count += 1
         counts[r["bucket"]] = counts.get(r["bucket"], 0) + 1
-    return {"count": len(rows), "buckets": counts, "shoppers": rows[:50]}
+        if len(out) < 50:
+            out.append({**r, "active": is_active, "seconds_ago": secs})
+    return {"count": len(rows), "active_count": active_count,
+            "buckets": counts, "shoppers": out}
 
 class RedeemReq(BaseModel):
     uid: str
@@ -274,27 +287,17 @@ def explain(req: ExplainReq):
         f"Recommended action: {action}."
     )
 
-    import os
-    key = os.environ.get("ANTHROPIC_API_KEY")
-    if not key:
-        return {"explanation": _fallback_explain(r, action), "source": "template"}
-    try:
-        import anthropic
-        client = anthropic.Anthropic(api_key=key)
-        msg = client.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=300,
-            system=(
-                "You are a marketing decisioning analyst. Explain in 3-4 sentences, "
-                "in plain business English, why the system made this call. Emphasise "
-                "INCREMENTALITY: we spend only where marketing changes the outcome. "
-                "Be concrete and confident; no hedging."
-            ),
-            messages=[{"role": "user", "content": facts}],
-        )
-        return {"explanation": msg.content[0].text, "source": "claude"}
-    except Exception as e:
-        return {"explanation": _fallback_explain(r, action), "source": f"template ({e})"}
+    import agent as ag
+    system = (
+        "You are a marketing decisioning analyst. Explain in 3-4 sentences, "
+        "in plain business English, why the system made this call. Emphasise "
+        "INCREMENTALITY: we spend only where marketing changes the outcome. "
+        "Be concrete and confident; no hedging."
+    )
+    text, src = ag.llm_complete(system, facts, 300)
+    if text:
+        return {"explanation": text, "source": src}
+    return {"explanation": _fallback_explain(r, action), "source": "template"}
 
 def _fallback_explain(r, action: str) -> str:
     if r["bucket"] == "Sure Thing":
@@ -323,12 +326,24 @@ def _fallback_explain(r, action: str) -> str:
 
 @app.post("/allocate")
 def allocate(req: AllocateReq):
-    df = scores()
-    from_curve = allocation()["curve"]
+    alloc = allocation()
+    from_curve = alloc["curve"]
     xs = [p["budget"] for p in from_curve]
     rev = float(np.interp(req.budget, xs, [p["revenue"] for p in from_curve]))
     cust = int(np.interp(req.budget, xs, [p["customers"] for p in from_curve]))
-    return {"budget": req.budget, "revenue": round(rev, 2), "customers_targeted": cust}
+    knee = alloc.get("knee", {}) or {}
+    past_knee = bool(knee.get("budget") is not None and req.budget > knee["budget"])
+    return {
+        "budget": req.budget,
+        "revenue": round(rev, 2),
+        "customers_targeted": cust,
+        "knee": {"budget": knee.get("budget"), "revenue": knee.get("revenue"),
+                 "customers": knee.get("customers")},
+        "past_knee": past_knee,
+        "note": ("This budget is past the marginal-ROI knee — every dollar beyond the knee earns "
+                 "less; the optimal stop is the knee." if past_knee
+                 else "This budget is at or below the optimal marginal-ROI knee."),
+    }
 
 class AgentReq(BaseModel):
     goal: str

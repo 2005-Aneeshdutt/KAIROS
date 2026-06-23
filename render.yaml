@@ -5,3 +5,11 @@ services:
     plan: free
     dockerfilePath: ./Dockerfile
     healthCheckPath: /
+    envVars:
+      # Set the secret in the Render dashboard (Environment tab). Leave unset to run the
+      # rule-based planner with no LLM. DATABASE_URL is optional — add a Postgres URL for
+      # persistence that survives redeploys; otherwise an ephemeral SQLite file is used.
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: OPENROUTER_MODEL
+        value: qwen/qwen3-235b-a22b-2507

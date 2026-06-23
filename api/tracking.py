@@ -4,13 +4,15 @@ import hashlib
 import random
 import time
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import date, timedelta
 from pathlib import Path
 from threading import Lock
 
 import joblib
 import numpy as np
+
+import db
 
 _LIVE_PATH = Path(__file__).resolve().parents[1] / "ml" / "artifacts" / "live_uplift.joblib"
 _LIVE_MODEL = None
@@ -298,6 +300,27 @@ class Store:
     def __init__(self):
         self._v: dict[str, Visitor] = {}
         self._lock = Lock()
+        self._load()
+
+    def _load(self):
+        try:
+            rows = db.load_all()
+        except Exception:
+            rows = {}
+        for uid, d in rows.items():
+            try:
+                self._v[uid] = _visitor_from_dict(d)
+            except Exception:
+                pass
+        if self._v:
+            _rebuild_revenue(self._v.values())
+            print(f"[store] loaded {len(self._v)} visitors from {db.backend()}")
+
+    def _persist(self, v: Visitor):
+        try:
+            db.save(v.uid, _visitor_to_dict(v))
+        except Exception:
+            pass
 
     def visitor(self, uid: str) -> Visitor:
         with self._lock:
@@ -324,6 +347,7 @@ class Store:
                 v.wishlist.append(pid)
             elif et == "remove_from_wishlist":
                 v.wishlist = [c for c in v.wishlist if c != pid]
+        self._persist(v)
         return v
 
     def purchase(self, uid: str, applied_points: int = 0) -> dict:
@@ -368,6 +392,7 @@ class Store:
                                          "total": grand_total, "units": len(items),
                                          "segment": seg, "ts": order["ts"]})
             del REVENUE["recent"][30:]
+        self._persist(v)
         return {"ok": True, "order": order, "loyalty": loyalty(v.points)}
 
     def end_session(self, uid: str, device: str = "desktop") -> dict:
@@ -375,6 +400,7 @@ class Store:
         v.ended = True
         delivered = deliver_to_inbox(v, device)
         sent = bool(v.inbox) and (delivered[0]["ts"] > time.time() - 2 if delivered else False)
+        self._persist(v)
         return {"ended": True, "delivered": sent, "inbox": delivered,
                 "mail": mail_simulation(v, device)}
 
@@ -390,7 +416,48 @@ class Store:
             v.points -= reward["cost"]
             v.events.append({"type": "redeem", "reward_id": reward_id,
                              "cost": reward["cost"], "ts": time.time(), "points_earned": 0})
+        self._persist(v)
         return {"ok": True, "reward": reward, "loyalty": loyalty(v.points)}
+
+def _visitor_to_dict(v: Visitor) -> dict:
+    return asdict(v)
+
+
+def _visitor_from_dict(d: dict) -> Visitor:
+    return Visitor(
+        uid=d["uid"], events=d.get("events", []), devices=d.get("devices", []),
+        cart=d.get("cart", []), wishlist=d.get("wishlist", []), orders=d.get("orders", []),
+        total_spent=d.get("total_spent", 0.0), inbox=d.get("inbox", []),
+        ended=d.get("ended", False), points=d.get("points", 0),
+        created=d.get("created", time.time()),
+    )
+
+
+def _rebuild_revenue(visitors) -> None:
+    REVENUE["orders"] = 0
+    REVENUE["gross"] = 0.0
+    REVENUE["incentive_given"] = 0.0
+    REVENUE["units"] = 0
+    REVENUE["by_category"] = defaultdict(float)
+    REVENUE["by_segment"] = defaultdict(float)
+    rows = []
+    for v in visitors:
+        for o in v.orders:
+            REVENUE["orders"] += 1
+            REVENUE["gross"] = round(REVENUE["gross"] + o.get("grand_total", 0), 2)
+            REVENUE["incentive_given"] = round(REVENUE["incentive_given"] + o.get("incentive", 0), 2)
+            REVENUE["units"] += o.get("units", 0)
+            for it in o.get("items", []):
+                p = PRODUCT_BY_ID.get(it.get("id"))
+                if p:
+                    REVENUE["by_category"][p["cat"]] += it.get("price", 0)
+            REVENUE["by_segment"][o.get("segment", "?")] += o.get("grand_total", 0)
+            rows.append({"order_id": o.get("order_id"), "uid": v.uid,
+                         "total": o.get("grand_total", 0), "units": o.get("units", 0),
+                         "segment": o.get("segment", "?"), "ts": o.get("ts", 0)})
+    rows.sort(key=lambda x: x["ts"], reverse=True)
+    REVENUE["recent"] = rows[:30]
+
 
 STORE = Store()
 

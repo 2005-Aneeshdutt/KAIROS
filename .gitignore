@@ -25,6 +25,10 @@ out/
 .env.local
 *.key
 
+# Local persistence (SQLite)
+*.db
+*.sqlite3
+
 # OS / editor
 .DS_Store
 Thumbs.db
