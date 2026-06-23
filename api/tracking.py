@@ -275,6 +275,7 @@ class Visitor:
     inbox: list = field(default_factory=list)
     ended: bool = False
     points: int = 0
+    consent: bool = True
     created: float = field(default_factory=time.time)
 
     def add_device(self, device: str):
@@ -434,7 +435,7 @@ def _visitor_from_dict(d: dict) -> Visitor:
         cart=d.get("cart", []), wishlist=d.get("wishlist", []), orders=d.get("orders", []),
         total_spent=d.get("total_spent", 0.0), inbox=d.get("inbox", []),
         ended=d.get("ended", False), points=d.get("points", 0),
-        created=d.get("created", time.time()),
+        consent=d.get("consent", True), created=d.get("created", time.time()),
     )
 
 
@@ -465,6 +466,134 @@ def _rebuild_revenue(visitors) -> None:
 
 
 STORE = Store()
+
+# ---- COREid identity layer (person-level identifier, à la Epsilon CORE ID) ----
+USERS: dict[str, dict] = {}
+try:
+    USERS.update(db.load_users())
+except Exception:
+    pass
+
+
+def core_id_for(email: str) -> str:
+    h = hashlib.sha1(email.strip().lower().encode()).hexdigest()[:10].upper()
+    return "CORE-" + h
+
+
+def login(email: str, name: str = "") -> dict:
+    email = (email or "").strip().lower()
+    if not email or "@" not in email or "." not in email.split("@")[-1]:
+        return {"error": "A valid email is required."}
+    existing = USERS.get(email, {})
+    is_new = email not in USERS
+    cid = existing.get("core_id") or core_id_for(email)
+    nm = (name or "").strip() or existing.get("name") or email.split("@")[0].replace(".", " ").title()
+    rec = {"email": email, "core_id": cid, "name": nm,
+           "created": existing.get("created") or time.time()}
+    USERS[email] = rec
+    try:
+        db.save_user(email, cid, nm, rec["created"])
+    except Exception:
+        pass
+    STORE.visitor(cid)  # ensure a profile bucket exists for this person
+    return {**rec, "is_new": is_new}
+
+
+def list_people() -> list[dict]:
+    out = []
+    now = time.time()
+    for email, u in USERS.items():
+        cid = u["core_id"]
+        v = STORE._v.get(cid)
+        if v is None or not v.events:
+            out.append({"core_id": cid, "email": email, "name": u["name"],
+                        "segment": "New", "intent_score": 0, "events": 0, "orders": 0,
+                        "revenue": 0.0, "cart": 0, "devices": [],
+                        "last_seen": u.get("created", 0), "online": False})
+            continue
+        p = profile(v)
+        last = v.events[-1].get("ts", u.get("created", 0)) if v.events else u.get("created", 0)
+        out.append({
+            "core_id": cid, "email": email, "name": u["name"],
+            "segment": p["segment"], "intent_score": p["intent_score"],
+            "events": len(v.events), "orders": len(v.orders),
+            "revenue": round(v.total_spent, 2), "cart": len(v.cart),
+            "devices": v.devices, "last_seen": last, "online": (now - last) <= 120,
+            "consent": getattr(v, "consent", True),
+        })
+    out.sort(key=lambda r: r["last_seen"], reverse=True)
+    return out
+
+
+def set_consent(uid: str, consent: bool) -> dict:
+    v = STORE.visitor(uid)
+    v.consent = bool(consent)
+    STORE._persist(v)
+    return {"uid": uid, "consent": v.consent}
+
+
+def reset_all() -> dict:
+    USERS.clear()
+    STORE._v.clear()
+    LIVE_SHOPPERS.clear()
+    _rebuild_revenue([])
+    try:
+        db.reset_all()
+    except Exception:
+        pass
+    return {"ok": True}
+
+
+def delete_person(core_id: str) -> dict:
+    """Fully remove a person: registry, live profile, persisted rows, and rebuild totals."""
+    email = next((e for e, u in USERS.items() if u["core_id"] == core_id), None)
+    if email:
+        USERS.pop(email, None)
+        try:
+            db.delete_user(email)
+        except Exception:
+            pass
+    STORE._v.pop(core_id, None)
+    LIVE_SHOPPERS.pop(core_id, None)
+    try:
+        db.delete_visitor(core_id)
+    except Exception:
+        pass
+    _rebuild_revenue(STORE._v.values())
+    return {"deleted": core_id, "email": email}
+
+
+def live_shoppers_detail(window: int = 600) -> list[dict]:
+    """People on the site right now and what each is actually looking at — the real
+    live signal the AI strategist needs for 'who is viewing X now' questions."""
+    now = time.time()
+    out = []
+    for email, u in USERS.items():
+        v = STORE._v.get(u["core_id"])
+        if not v or not v.events:
+            continue
+        last = v.events[-1].get("ts", 0)
+        if now - last > window:
+            continue
+        p = profile(v)
+        seen = []
+        for e in reversed(v.events):
+            if e.get("type") == "view_product":
+                nm = (PRODUCT_BY_ID.get(e.get("product_id")) or {}).get("name")
+                if nm and nm not in seen:
+                    seen.append(nm)
+            if len(seen) >= 5:
+                break
+        out.append({
+            "name": u["name"], "core_id": u["core_id"], "segment": p["segment"],
+            "intent_score": p["intent_score"],
+            "looking_at": (p.get("top_product") or {}).get("name"),
+            "recently_viewed": seen,
+            "in_cart": [c.get("name") for c in (p.get("cart") or [])],
+            "events": len(v.events), "online": (now - last) <= 120,
+        })
+    out.sort(key=lambda r: not r["online"])
+    return out
 
 def _product_view_counts(v: Visitor) -> dict[str, int]:
     counts: dict[str, int] = defaultdict(int)
@@ -596,6 +725,7 @@ def profile(v: Visitor, record: bool = False) -> dict:
         "devices": v.devices,
         "events": len(v.events),
         "dwell_s": round(dwell, 1),
+        "consent": getattr(v, "consent", True),
         "loyalty": loyalty(v.points),
         "uplift": model["uplift"] if model else None,
         "base_rate": model["base_rate"] if model else None,
@@ -944,6 +1074,8 @@ def session_end_mail(v: Visitor, device: str) -> dict | None:
             "reason": f"{seg}: low live intent, but a cheap {orch['channel']} touch keeps the door open without giving away margin."}
 
 def deliver_to_inbox(v: Visitor, device: str) -> list[dict]:
+    if not getattr(v, "consent", True):
+        return v.inbox[::-1]
     c = session_end_mail(v, device)
     if c:
         recent = v.inbox and (time.time() - v.inbox[-1]["ts"] < 1.5)

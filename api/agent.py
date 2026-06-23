@@ -20,6 +20,10 @@ SYSTEM = (
     "figures. Tools: get_segments (per-bucket counts, average uplift and incremental revenue), "
     "solve_allocation(budget) (optimizer output for a given $ budget), run_benchmark (Kairos vs a "
     "traditional batch-and-blast campaign), get_strategy (live storefront funnel + recommendations). "
+    "IMPORTANT: get_segments describes the FULL modeled customer base of 64,000 (offline, NOT "
+    "live). For anything about who is on the site NOW, who is online, or who is viewing a specific "
+    "product right now, you MUST call get_live_shoppers — never answer a 'now/live' question from "
+    "get_segments. If get_live_shoppers returns nobody matching, say so honestly. "
     "Always call get_segments first to ground yourself. solve_allocation ranks ALL customers by "
     "incremental ROI and also returns the marginal-ROI 'knee' (knee.budget / knee.customers / "
     "knee.revenue) — the optimal place to STOP, because every dollar past the knee earns less. If the "
@@ -45,6 +49,11 @@ TOOLS = [
      "input_schema": {"type": "object", "properties": {}}},
     {"name": "get_strategy",
      "description": "Live funnel, segment counts and prioritised recommendations from the store.",
+     "input_schema": {"type": "object", "properties": {}}},
+    {"name": "get_live_shoppers",
+     "description": "The people on the site RIGHT NOW — each with their segment, what they are "
+                    "currently looking at, recently viewed products, and cart. Use this for ANY "
+                    "question about who is online now or who is viewing a specific product.",
      "input_schema": {"type": "object", "properties": {}}},
 ]
 

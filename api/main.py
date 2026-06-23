@@ -146,6 +146,86 @@ def product(pid: str):
 def promotions():
     return trk.promotions()
 
+class LoginReq(BaseModel):
+    email: str
+    name: str = ""
+
+@app.post("/auth/login")
+def auth_login(req: LoginReq):
+    res = trk.login(req.email, req.name)
+    if res.get("error"):
+        raise HTTPException(400, res["error"])
+    return res
+
+@app.get("/people")
+def people():
+    return {"people": trk.list_people()}
+
+@app.delete("/people/{core_id}")
+def delete_person(core_id: str):
+    return trk.delete_person(core_id)
+
+@app.post("/admin/reset")
+def admin_reset():
+    return trk.reset_all()
+
+class ConsentReq(BaseModel):
+    uid: str
+    consent: bool
+
+@app.post("/consent")
+def consent(req: ConsentReq):
+    return trk.set_consent(req.uid, req.consent)
+
+@app.get("/customer/{core_id}/strategy")
+def customer_strategy(core_id: str):
+    import agent as ag
+    v = trk.STORE.visitor(core_id)
+    dev = v.devices[-1] if v.devices else "desktop"
+    p = trk.profile(v)
+    nba = trk.next_best_action(v, dev)
+    top = (p.get("top_product") or {}).get("name") if p.get("top_product") else None
+    cart = [c.get("name") for c in (p.get("cart") or [])]
+    facts = (
+        f"Customer segment: {p['segment']}. Intent score {p['intent_score']}/100. "
+        f"Uplift {p.get('uplift')}, baseline {p.get('base_rate')}. "
+        f"Currently viewing: {top or 'nothing specific'}. Cart: {cart or 'empty'}. "
+        f"Events: {p['events']}. Consent to personalisation: {getattr(v, 'consent', True)}."
+    )
+    system = ("You are Kairos's marketing strategist advising on ONE specific shopper. In 2-3 sentences, "
+              "recommend the single best action: SPEND / HOLD / SUPPRESS / SKIP, the channel, and the offer "
+              "(or none). Ground it in this shopper's data; emphasise incrementality and restraint. If "
+              "consent is false, respect it and recommend no outbound contact.")
+    narrative, src = ag.llm_complete(system, facts, 220)
+    if not narrative:
+        src = "template"
+        verb = {"Persuadable": "SPEND — marketing changes their outcome here",
+                "Sure Thing": "HOLD — they buy anyway; reward with loyalty, don't discount",
+                "Sleeping Dog": "SUPPRESS — contact lowers their conversion",
+                "Lost Cause": "SKIP — keep it cheap and ambient",
+                "Converted": "NURTURE — thank-you + cross-sell, no discount",
+                "Unknown": "OBSERVE — not enough signal yet"}.get(p["segment"], "OBSERVE")
+        narrative = f"{verb}. {nba.get('reason') or nba.get('rationale') or ''}".strip()
+    return {"segment": p["segment"], "next_best_action": nba, "narrative": narrative,
+            "source": src, "consent": getattr(v, "consent", True)}
+
+class ChatReq(BaseModel):
+    uid: str
+    message: str
+
+@app.post("/chat")
+def chat_endpoint(req: ChatReq):
+    import chat as ch
+    res = ch.answer(req.message, trk.PRODUCTS)
+    top = res["products"][0]["id"] if res["products"] else None
+    trk.STORE.track(req.uid, {"type": "chat", "product_id": top, "device": "desktop",
+                              "meta": {"message": req.message[:200],
+                                       "matched": [p["id"] for p in res["products"]]}})
+    if top:
+        trk.STORE.track(req.uid, {"type": "view_product", "product_id": top,
+                                  "device": "desktop", "dwell_ms": 1500})
+    return res
+
 @app.get("/live-customers")
 def live_customers():
     now = time.time()
@@ -249,6 +329,24 @@ def suggestion(uid: str, device: str = "mobile"):
     return {"identity_resolved": len(v.devices) > 1, "devices": v.devices,
             "profile": trk.profile(v, record=True), "next_best_action": trk.next_best_action(v, device),
             "mail": trk.mail_simulation(v, device)}
+
+@app.get("/people/stream")
+async def people_stream():
+    async def gen():
+        for _ in range(36000):
+            yield sim.sse_format({"people": trk.list_people()})
+            await asyncio.sleep(1.0)
+    return StreamingResponse(gen(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+@app.get("/live-customers/stream")
+async def live_customers_stream():
+    async def gen():
+        for _ in range(36000):
+            yield sim.sse_format(live_customers())
+            await asyncio.sleep(1.0)
+    return StreamingResponse(gen(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 @app.get("/visitor/{uid}/stream")
 async def visitor_stream(uid: str):
@@ -360,8 +458,71 @@ def agent_endpoint(req: AgentReq):
         "run_benchmark": lambda: {k: sim.benchmark(n=64000)[k]
                                   for k in ("traditional", "conductor", "deltas")},
         "get_strategy": lambda: trk.strategy_report(),
+        "get_live_shoppers": lambda: {"shoppers": trk.live_shoppers_detail()},
     }
     return ag.run(req.goal, executors)
+
+@app.get("/report")
+def report():
+    import agent as ag
+    seg = segments()
+    by = {s["bucket"]: s for s in seg["segments"]}
+    total = seg["total_customers"]
+    alloc = allocation()
+    knee = alloc.get("knee", {}) or {}
+    b = sim.benchmark(n=64000)
+    d, C, T = b["deltas"], b["conductor"], b["traditional"]
+    strat = trk.strategy_report()
+    live = trk.live_shoppers_detail()
+    pers = by.get("Persuadable", {})
+
+    facts = (
+        f"Customer base: {total:,}. Mix — Persuadable {pers.get('pct')}% ({pers.get('count'):,}), "
+        f"Sure Thing {by.get('Sure Thing',{}).get('pct')}%, Sleeping Dog {by.get('Sleeping Dog',{}).get('pct')}%, "
+        f"Lost Cause {by.get('Lost Cause',{}).get('pct')}%. "
+        f"Optimal spend (marginal-ROI knee): ${knee.get('budget',0):,.0f} reaching {knee.get('customers',0):,} "
+        f"customers for ${knee.get('revenue',0):,.0f} incremental revenue. "
+        f"Vs traditional batch-and-blast: +{d.get('net_revenue_pct')}% net revenue, "
+        f"{abs(d.get('messages_saved',0)):,} fewer messages, ${d.get('spend_saved',0):,.0f} less spend, "
+        f"ROI {C.get('roi')}x vs {T.get('roi')}x. Live right now: {len(live)} shoppers on site."
+    )
+    system = ("You are a senior marketing strategy consultant. Using ONLY the numbers provided, write a "
+              "3-4 sentence executive summary, then a line 'NEXT STEPS:' followed by 5 concrete, prioritised "
+              "next steps. Emphasise incrementality (spend only where marketing changes the outcome) and "
+              "restraint. Plain text, no markdown headers.")
+    narrative, src = ag.llm_complete(system, facts, 520)
+    if not narrative:
+        src = "template"
+        narrative = (
+            f"Kairos targets the {pers.get('count',0):,} Persuadable customers ({pers.get('pct')}% of the base) "
+            f"where marketing measurably changes the outcome, and deliberately holds back on the rest. The "
+            f"marginal-ROI knee says the optimal spend is about ${knee.get('budget',0):,.0f}, reaching "
+            f"{knee.get('customers',0):,} of the highest-uplift customers for ${knee.get('revenue',0):,.0f} in "
+            f"incremental revenue — beyond that, every dollar earns less. Against a traditional batch-and-blast "
+            f"campaign this delivers {d.get('net_revenue_pct')}% more net revenue with "
+            f"{abs(d.get('messages_saved',0)):,} fewer messages.\n"
+            f"NEXT STEPS:\n"
+            f"1. Fund Persuadables up to the ${knee.get('budget',0):,.0f} knee; stop there.\n"
+            f"2. Suppress Sleeping Dogs entirely — contact lowers their conversion.\n"
+            f"3. Reward Sure Things with loyalty, never discounts, to protect margin.\n"
+            f"4. Keep Lost Causes on cheap ambient channels only.\n"
+            f"5. Right-size every Persuadable offer to its Minimum Effective Dose, not a blanket 20%."
+        )
+
+    return {
+        "generated_at": __import__("datetime").datetime.now().isoformat(timespec="seconds"),
+        "total_customers": total,
+        "segments": seg["segments"],
+        "knee": knee,
+        "benchmark": {"net_revenue_pct": d.get("net_revenue_pct"),
+                      "messages_saved": d.get("messages_saved"),
+                      "spend_saved": d.get("spend_saved"),
+                      "roi": C.get("roi"), "trad_roi": T.get("roi")},
+        "restraint": alloc.get("restraint_metrics", {}),
+        "live": {"on_site": len(live), "funnel": strat.get("funnel", {}),
+                 "recommendations": strat.get("recommendations", [])},
+        "narrative": narrative, "source": src,
+    }
 
 def _rows(df: pd.DataFrame) -> list[dict]:
     recs = []
