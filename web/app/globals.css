@@ -7,12 +7,36 @@
 }
 
 body {
-  background: radial-gradient(1200px 600px at 70% -10%, #16203a 0%, #0a0e1a 55%);
+  background:
+    radial-gradient(900px 520px at 10% -12%, rgba(230, 0, 90, 0.14), transparent 60%),
+    radial-gradient(1000px 600px at 92% -6%, rgba(59, 130, 246, 0.10), transparent 55%),
+    radial-gradient(800px 800px at 50% 120%, rgba(34, 197, 94, 0.06), transparent 60%),
+    #070a12;
+  background-attachment: fixed;
   color: #e7ecf5;
 }
 
+/* ---- Glassmorphism ---- */
 .card {
-  @apply bg-panel border border-line rounded-2xl p-5 shadow-lg;
+  position: relative;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.018));
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 1rem;
+  padding: 1.25rem;
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  transition: border-color 0.25s ease, transform 0.25s ease, box-shadow 0.25s ease;
+}
+.card:hover {
+  border-color: rgba(255, 255, 255, 0.16);
+  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.09);
+}
+.glass {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02));
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  border: 1px solid rgba(255, 255, 255, 0.09);
 }
 .card-title {
   @apply text-xs font-semibold uppercase tracking-widest text-slate-400 mb-3;
@@ -24,6 +48,22 @@ body {
   @apply text-[11px] font-semibold px-2 py-0.5 rounded-full;
 }
 
+/* Recharts tooltips/cursors read better on glass */
+.recharts-default-tooltip {
+  background: rgba(13, 19, 32, 0.92) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border-radius: 0.6rem !important;
+  backdrop-filter: blur(8px);
+}
+.recharts-tooltip-cursor {
+  fill: rgba(255, 255, 255, 0.05);
+}
+
+/* Thin, modern scrollbars */
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.12); border-radius: 8px; }
+*::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.22); }
+
 @keyframes marquee {
   from { transform: translateX(0); }
   to { transform: translateX(-50%); }
@@ -34,3 +74,9 @@ body {
 .animate-marquee:hover {
   animation-play-state: paused;
 }
+
+@keyframes floaty {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+.animate-floaty { animation: floaty 5s ease-in-out infinite; }

@@ -276,6 +276,7 @@ class Visitor:
     ended: bool = False
     points: int = 0
     consent: bool = True
+    merged_from: list = field(default_factory=list)   # stitched anonymous/guest sessions
     created: float = field(default_factory=time.time)
 
     def add_device(self, device: str):
@@ -404,6 +405,9 @@ class Store:
     def end_session(self, uid: str, device: str = "desktop") -> dict:
         v = self.visitor(uid)
         v.ended = True
+        if v.events and v.events[-1].get("type") != "session_end":
+            v.events.append({"type": "session_end", "device": device,
+                             "ts": time.time(), "points_earned": 0})
         delivered = deliver_to_inbox(v, device)
         sent = bool(v.inbox) and (delivered[0]["ts"] > time.time() - 2 if delivered else False)
         self._persist(v)
@@ -435,7 +439,8 @@ def _visitor_from_dict(d: dict) -> Visitor:
         cart=d.get("cart", []), wishlist=d.get("wishlist", []), orders=d.get("orders", []),
         total_spent=d.get("total_spent", 0.0), inbox=d.get("inbox", []),
         ended=d.get("ended", False), points=d.get("points", 0),
-        consent=d.get("consent", True), created=d.get("created", time.time()),
+        consent=d.get("consent", True), merged_from=d.get("merged_from", []),
+        created=d.get("created", time.time()),
     )
 
 
@@ -480,7 +485,7 @@ def core_id_for(email: str) -> str:
     return "CORE-" + h
 
 
-def login(email: str, name: str = "") -> dict:
+def login(email: str, name: str = "", guest_uid: str = "") -> dict:
     email = (email or "").strip().lower()
     if not email or "@" not in email or "." not in email.split("@")[-1]:
         return {"error": "A valid email is required."}
@@ -496,7 +501,14 @@ def login(email: str, name: str = "") -> dict:
     except Exception:
         pass
     STORE.visitor(cid)  # ensure a profile bucket exists for this person
-    return {**rec, "is_new": is_new}
+    # Identity resolution: fold any anonymous guest activity into this CORE ID.
+    merge = None
+    if guest_uid:
+        try:
+            merge = merge_guest(cid, guest_uid)
+        except Exception:
+            merge = {"merged": False, "reason": "merge error"}
+    return {**rec, "is_new": is_new, "merge": merge}
 
 
 def list_people() -> list[dict]:
@@ -563,6 +575,342 @@ def delete_person(core_id: str) -> dict:
     return {"deleted": core_id, "email": email}
 
 
+SESSION_GAP = 1800   # a >30-min gap between events = a new session
+
+
+def _email_for(core_id: str) -> str | None:
+    return next((e for e, u in USERS.items() if u["core_id"] == core_id), None)
+
+
+def _session_count(v: "Visitor") -> int:
+    """Distinct sessions: a new one starts after a 'Leave site' (session_end) boundary
+    or a >30-min gap in the activity stream."""
+    evs = [e for e in v.events if e.get("ts")]
+    if not evs:
+        return 0
+    n = 1
+    for prev, cur in zip(evs, evs[1:]):
+        if prev.get("type") == "session_end" or (cur.get("ts", 0) - prev.get("ts", 0)) > SESSION_GAP:
+            n += 1
+    return n
+
+
+_CHANNEL_ICON = {"Web": "🌐", "Chatbot": "💬", "Email": "📬"}
+
+
+def _channels_seen(v: "Visitor") -> list[str]:
+    """Distinct touchpoints (not devices) this person has been observed on — the
+    channels CORE ID unifies into one view."""
+    ch = set()
+    if any(e.get("type") not in ("chat", "session_end") for e in v.events):
+        ch.add("Web")
+    if any(e.get("type") == "chat" for e in v.events):
+        ch.add("Chatbot")
+    if v.inbox:
+        ch.add("Email")
+    return [c for c in ("Web", "Chatbot", "Email") if c in ch]
+
+
+def _device_icon(d: str) -> str:
+    return {"mobile": "📱", "tablet": "📟", "desktop": "💻"}.get(d, "🖥️")
+
+
+def identity_graph(core_id: str) -> dict:
+    """The CORE ID resolution graph: one person resolved from many signals — email,
+    devices, channels and sessions (including any stitched anonymous activity)."""
+    email = _email_for(core_id)
+    u = USERS.get(email, {}) if email else {}
+    v = STORE._v.get(core_id)
+    devices = list(v.devices) if v else []
+    channels = _channels_seen(v) if v else []
+    sessions = _session_count(v) if v else 0
+    events = len(v.events) if v else 0
+    merged = list(getattr(v, "merged_from", [])) if v else []
+    tss = [e.get("ts", 0) for e in (v.events if v else []) if e.get("ts")]
+    first_seen = min(tss) if tss else u.get("created", 0)
+    last_seen = max(tss) if tss else 0
+
+    signals = []
+    if email:
+        signals.append({"type": "email", "label": email, "icon": "📧"})
+    for d in devices:
+        signals.append({"type": "device", "label": d.title(), "icon": _device_icon(d)})
+    for c in channels:
+        signals.append({"type": "channel", "label": c, "icon": _CHANNEL_ICON.get(c, "🔗")})
+
+    return {
+        "core_id": core_id, "email": email, "name": u.get("name"),
+        "devices": devices, "channels": channels, "sessions": sessions, "events": events,
+        "first_seen": first_seen, "last_seen": last_seen,
+        "signals": signals, "signal_count": len(signals),
+        "merged_from": merged, "merged_sessions": sum(m.get("sessions", 0) for m in merged),
+        "revenue": round(v.total_spent, 2) if v else 0.0,
+        "consent": getattr(v, "consent", True) if v else True,
+    }
+
+
+def send_marketer_mail(core_id: str, device: str = "desktop") -> dict:
+    """Marketer-initiated send: compose the right targeted message for this customer's
+    CURRENT best action (the product they're still considering) and drop it into their
+    inbox so they actually receive it."""
+    v = STORE.visitor(core_id)
+    if not getattr(v, "consent", True):
+        return {"ok": False, "error": "Customer opted out of personalisation — respect consent."}
+    p = profile(v)
+    nba = next_best_action(v, device)
+    top = p.get("top_product")
+    emoji = top["emoji"] if top else "🛍️"
+    mail = {
+        "channel": nba.get("channel", "Email"), "channel_icon": nba.get("channel_icon", "📧"),
+        "subject": f"{emoji} {nba.get('headline', 'A little something for you')}",
+        "preview": nba.get("message", ""),
+        "body": nba.get("message", "") + " Your cart and points follow you on every device.",
+        "cta": nba.get("cta", "Shop now →"), "link": nba.get("link", "/store"),
+        "product": top, "reward_type": nba.get("reward_type"),
+        "offer_pct": nba.get("offer_pct"),
+        "reason": nba.get("rationale") or nba.get("reason"),
+        "from": "VERVE · The Style Edit", "ts": time.time(), "read": False, "sent_by": "marketer",
+    }
+    v.inbox.append(mail)
+    del v.inbox[:-12]
+    STORE._persist(v)
+    return {"ok": True, "mail": mail, "segment": p["segment"],
+            "to": _email_for(core_id), "channel": mail["channel"]}
+
+
+def _pc(x):
+    try:
+        return f"{float(x) * 100:.0f}%"
+    except Exception:
+        return "—"
+
+
+def customer_facts(v: "Visitor") -> str:
+    """Rich, real-time behavioural context for the LLM strategist — so it reasons about
+    THIS shopper's actual actions, not a generic segment."""
+    p = profile(v)
+    interests = p.get("interests") or []
+    def lst(items):
+        return ", ".join(f"{i['name']} (intent {i['intent']})" for i in items) or "none"
+    bought = [i for i in interests if i.get("bought")]
+    cart = [i for i in interests if i.get("in_cart")]
+    wish = [i for i in interests if i.get("in_wishlist") and not i.get("bought")]
+    considering = [i for i in interests if not i.get("bought") and not i.get("in_cart")]
+    nba = next_best_action(v, v.devices[-1] if v.devices else "desktop")
+    med = nba.get("med") or {}
+    name = (USERS.get(_email_for(v.uid) or "", {}) or {}).get("name") or "This shopper"
+    return (
+        f"Shopper: {name}. Segment: {p['segment']} ({p['intent']}). "
+        f"Intent score {p['intent_score']}/100. Uplift {_pc(p.get('uplift'))}, baseline {_pc(p.get('base_rate'))}. "
+        f"Orders: {len(v.orders)} (${round(v.total_spent,2)} spent). "
+        f"Already bought: {lst(bought)}. In cart: {lst(cart)}. Wishlisted (wants, not bought): {lst(wish)}. "
+        f"Still browsing: {lst(considering)}. "
+        f"Devices: {', '.join(v.devices) or 'one'}. Best channel now: {nba.get('channel')}. "
+        f"Suggested right-sized discount: {med.get('discount', 'n/a')}%. "
+        f"Consent to personalisation: {getattr(v, 'consent', True)}."
+    )
+
+
+def analyze_customer(v: "Visitor") -> dict:
+    """Deterministic but genuinely ANALYTICAL recommendation — reads the shopper's real-time
+    actions (what they bought vs still want, cart, wishlist, uplift) and decides the single
+    best move. This is the offline brain when no LLM key is set."""
+    p = profile(v)
+    seg = p["segment"]
+    interests = p.get("interests") or []
+    nba = next_best_action(v, v.devices[-1] if v.devices else "desktop")
+    channel = nba.get("channel", "Email")
+    name = (USERS.get(_email_for(v.uid) or "", {}) or {}).get("name") or "This shopper"
+    uplift, base, score = p.get("uplift"), p.get("base_rate"), p.get("intent_score", 0)
+
+    bought = [i for i in interests if i.get("bought")]
+    cart = [i for i in interests if i.get("in_cart")]
+    wish = [i for i in interests if i.get("in_wishlist") and not i.get("bought")]
+    considering = [i for i in interests if not i.get("bought") and not i.get("in_cart")]
+    med = nba.get("med") or {}
+    disc = med.get("discount") if med else nba.get("offer_pct")
+
+    if not v.events:
+        return {"decision": "OBSERVE", "segment": seg,
+                "narrative": f"{name} has no activity yet — not enough signal to act. Wait for a focused intent signal."}
+    if not getattr(v, "consent", True):
+        return {"decision": "DO NOT CONTACT", "segment": seg,
+                "narrative": f"{name} has opted out of personalisation. Respect it — no outbound message; rely on the on-site experience only."}
+
+    # describe what they actually did
+    did = []
+    if bought:
+        did.append(f"bought the {bought[0]['name']}")
+    if cart:
+        did.append(f"has the {cart[0]['name']} sitting in their cart")
+    if wish:
+        did.append(f"wishlisted the {wish[0]['name']}")
+    if not cart and not wish and considering:
+        did.append(f"keeps coming back to the {considering[0]['name']}")
+    behaviour = "; ".join(did) or f"has {p['total_views']} recent product views"
+
+    # decision driven by the strongest live signal
+    if cart:
+        offer = f"{disc}% off (the minimum effective dose)" if disc else "a points-backed nudge"
+        return {"decision": "SPEND — recover the cart", "segment": seg,
+                "narrative": (f"{name} {behaviour}. Cart-stage intent with {_pc(uplift)} uplift means a nudge is "
+                              f"incremental — send via {channel}: {offer}, deep-linked to the item, the moment they leave. "
+                              f"Don't blanket-discount; right-size it.")}
+    if bought and (wish or considering):
+        tgt = (wish or considering)[0]
+        return {"decision": "NURTURE — cross-sell (no discount)", "segment": seg,
+                "narrative": (f"{name} {behaviour}. They've already converted, so don't re-pitch what they own — "
+                              f"cross-sell the {tgt['name']} (intent {tgt['intent']}) via {channel} with 2× points, not a "
+                              f"discount. Protect margin on a proven buyer.")}
+    if seg == "Persuadable":
+        tgt = (considering or wish or [{}])[0]
+        what = f"the {tgt['name']}" if tgt.get("name") else "the items they viewed"
+        return {"decision": "SPEND — marketing changes the outcome here", "segment": seg,
+                "narrative": (f"{name} {behaviour}. Persuadable with {_pc(uplift)} uplift — this is exactly where a dollar is "
+                              f"incremental. Send via {channel}: {(str(disc)+'% off') if disc else 'a reminder'} on {what}, "
+                              f"right-sized so you keep the margin you don't need to give away.")}
+    if seg == "Sure Thing":
+        return {"decision": "HOLD — reward, don't discount", "segment": seg,
+                "narrative": (f"{name} {behaviour}. High baseline ({_pc(base)}) with low uplift — they'll buy anyway. "
+                              f"Reward with loyalty points via {channel}; a discount here is pure margin lost.")}
+    if seg == "Sleeping Dog":
+        return {"decision": "SUPPRESS — stay silent", "segment": seg,
+                "narrative": (f"{name} {behaviour}, but contact lowers their conversion. Leave them alone — silence here "
+                              f"protects organic revenue you'd otherwise erode.")}
+    if seg == "Converted":
+        return {"decision": "NURTURE lightly — no spend", "segment": seg,
+                "narrative": (f"{name} just purchased and shows no new intent. A thank-you with 2× points on their next "
+                              f"visit is enough; no discount, no outbound spend.")}
+    return {"decision": "SKIP — keep it cheap", "segment": seg,
+            "narrative": (f"{name} {behaviour} but intent is low ({score}/100). Keep it ambient and cheap — don't spend "
+                          f"until there's a focused signal that marketing can move.")}
+
+
+def identity_summary() -> dict:
+    """Fleet-wide CORE ID resolution stats — the analytics for the identity layer."""
+    people = len(USERS)
+    resolved = cross_device = multi_channel = 0
+    signals = stitched_events = stitched_sessions = stitched_people = 0
+    chan = defaultdict(int)
+    for u in USERS.values():
+        g = identity_graph(u["core_id"])
+        signals += g["signal_count"]
+        if g["signal_count"] > 1:
+            resolved += 1
+        if len(g["devices"]) > 1:
+            cross_device += 1
+        if len(g["channels"]) > 1:
+            multi_channel += 1
+        for c in g["channels"]:
+            chan[c] += 1
+        if g["merged_from"]:
+            stitched_people += 1
+            stitched_events += sum(m.get("events", 0) for m in g["merged_from"])
+            stitched_sessions += sum(m.get("sessions", 0) for m in g["merged_from"])
+    return {
+        "people": people, "resolved": resolved, "cross_device": cross_device,
+        "multi_channel": multi_channel, "signals_unified": signals,
+        "avg_signals": round(signals / max(people, 1), 1),
+        "stitched_people": stitched_people, "stitched_events": stitched_events,
+        "stitched_sessions": stitched_sessions, "channels": dict(chan),
+    }
+
+
+def seed_demo(reset: bool = True) -> dict:
+    """Populate a realistic demo IN-PROCESS (works on a fresh deploy, no localhost needed):
+    a Persuadable, buyers, a cross-device identity merge, a bundle-builder, and an opt-out."""
+    if reset:
+        reset_all()
+
+    def jrny(uid, steps):
+        for t, pid, dev in steps:
+            STORE.track(uid, {"type": t, "product_id": pid, "device": dev, "dwell_ms": 4000})
+
+    u = login("aarav@demo.com", "Aarav Shah")["core_id"]
+    jrny(u, [("view_product", "p9", "desktop"), ("view_detail", "p9", "desktop"),
+             ("view_all_reviews", "p9", "desktop"), ("view_product", "p9", "desktop"),
+             ("add_to_wishlist", "p9", "desktop"), ("add_to_cart", "p9", "desktop"),
+             ("view_product", "p12", "desktop")])
+
+    u = login("diya@demo.com", "Diya Menon")["core_id"]
+    jrny(u, [("view_product", "p13", "desktop"), ("add_to_cart", "p13", "desktop")])
+    STORE.purchase(u)
+
+    u = login("kabir@demo.com", "Kabir Rao")["core_id"]
+    jrny(u, [("view_product", f"p{i}", "desktop") for i in range(1, 12)])
+
+    u = login("isha@demo.com", "Isha Nair")["core_id"]
+    jrny(u, [("view_product", "p20", "desktop")])
+
+    # cross-device identity merge (guest desktop -> leave -> mobile -> sign in)
+    g = "seedguest_" + hashlib.md5(str(time.time()).encode()).hexdigest()[:6]
+    jrny(g, [("view_product", "p7", "desktop"), ("view_detail", "p7", "desktop"),
+             ("add_to_cart", "p7", "desktop")])
+    STORE.end_session(g, "desktop")
+    jrny(g, [("view_product", "p10", "mobile"), ("view_reviews", "p10", "mobile")])
+    login("rohan@demo.com", "Rohan Gupta", guest_uid=g)
+
+    u = login("ananya@demo.com", "Ananya Iyer")["core_id"]
+    jrny(u, [("view_product", "p19", "desktop"), ("add_to_cart", "p19", "desktop")])
+    STORE.purchase(u)
+    jrny(u, [("view_product", "p17", "mobile"), ("add_to_cart", "p17", "mobile")])
+    STORE.purchase(u)
+
+    u = login("vihaan@demo.com", "Vihaan Reddy")["core_id"]
+    jrny(u, [("view_product", "p1", "desktop"), ("add_to_wishlist", "p1", "desktop"),
+             ("view_product", "p11", "desktop"), ("add_to_cart", "p11", "desktop"),
+             ("view_product", "p14", "desktop")])
+
+    u = login("sara@demo.com", "Sara Khan")["core_id"]
+    jrny(u, [("view_product", "p3", "desktop")])
+    set_consent(u, False)
+
+    return {"ok": True, "people": len(USERS), **identity_summary()}
+
+
+def merge_guest(core_id: str, guest_uid: str) -> dict:
+    """Stitch an anonymous guest's activity into a known CORE ID — the signature
+    identity-resolution moment. Idempotent and safe: no-op if there's nothing to merge."""
+    if not guest_uid or guest_uid == core_id:
+        return {"merged": False, "reason": "no guest id"}
+    g = STORE._v.get(guest_uid)
+    if not g or not g.events:
+        return {"merged": False, "reason": "no guest activity"}
+    k = STORE.visitor(core_id)
+    with STORE._lock:
+        g_sessions = _session_count(g)
+        g_devices = list(g.devices)
+        g_events = len(g.events)
+        k.events.extend(g.events)
+        k.events.sort(key=lambda e: e.get("ts", 0))
+        for d in g.devices:
+            k.add_device(d)
+        for c in g.cart:
+            if c not in k.cart:
+                k.cart.append(c)
+        for w in g.wishlist:
+            if w not in k.wishlist:
+                k.wishlist.append(w)
+        k.orders.extend(g.orders)
+        k.total_spent = round(k.total_spent + g.total_spent, 2)
+        k.points += g.points
+        k.inbox.extend(g.inbox)
+        k.merged_from.append({"guest_uid": guest_uid, "events": g_events,
+                              "devices": g_devices, "sessions": g_sessions, "ts": time.time()})
+    STORE._v.pop(guest_uid, None)
+    LIVE_SHOPPERS.pop(guest_uid, None)
+    try:
+        db.delete_visitor(guest_uid)
+    except Exception:
+        pass
+    STORE._persist(k)
+    _rebuild_revenue(STORE._v.values())
+    return {"merged": True, "guest_uid": guest_uid, "events": g_events,
+            "devices": g_devices, "sessions": g_sessions,
+            "total_sessions": _session_count(k), "total_events": len(k.events),
+            "signal_count": identity_graph(core_id)["signal_count"]}
+
+
 def live_shoppers_detail(window: int = 600) -> list[dict]:
     """People on the site right now and what each is actually looking at — the real
     live signal the AI strategist needs for 'who is viewing X now' questions."""
@@ -608,8 +956,8 @@ def visitor_features(v: Visitor) -> np.ndarray:
     distinct = len(views)
     top = max(views.values()) if views else 0
     dwell_min = sum(e.get("dwell_ms", 0) for e in v.events) / 60000.0
-    reviews = sum(1 for e in v.events if e.get("type") == "view_reviews")
-    prior = sum(1 for e in v.events if e.get("type") == "checkout")
+    reviews = sum(1 for e in v.events if e.get("type") in ("view_reviews", "view_all_reviews"))
+    prior = len(v.orders) + sum(1 for e in v.events if e.get("type") in ("purchase", "checkout"))
     recency = 0.5
     return np.array([[total, distinct, top, dwell_min, len(v.wishlist),
                       len(v.cart), reviews, prior, recency]], dtype=float)
@@ -672,16 +1020,31 @@ def _interest_intent(views, dwell_s, reviews, in_cart, in_wish, bought) -> int:
         return int(min(80, 40 + engagement * 0.4))
     return int(min(70, engagement))
 
+_INTENT_EVENTS = ("view_product", "view_detail", "view_reviews", "view_all_reviews",
+                  "add_to_cart", "add_to_wishlist")
+
+
 def profile(v: Visitor, record: bool = False) -> dict:
     views = _product_view_counts(v)
     total_views = sum(views.values())
-    top_pid = max(views, key=views.get) if views else None
+    bought_ids = {it["id"] for o in v.orders for it in o.get("items", [])}
+    # Lead with the most-viewed product they HAVEN'T bought yet (ongoing intent),
+    # falling back to any viewed item.
+    active_views = {p: c for p, c in views.items() if p not in bought_ids}
+    top_pid = (max(active_views, key=active_views.get) if active_views
+               else (max(views, key=views.get) if views else None))
     top_views = views.get(top_pid, 0) if top_pid else 0
     has_cart = bool(v.cart)
     has_wish = bool(v.wishlist)
-    read_reviews = sum(1 for e in v.events if e.get("type") == "view_reviews")
+    read_reviews = sum(1 for e in v.events if e.get("type") in ("view_reviews", "view_all_reviews"))
     opened_detail = sum(1 for e in v.events if e.get("type") == "view_detail")
-    checked_out = any(e.get("type") == "checkout" for e in v.events)
+    # Has the shopper shown fresh intent AFTER their last purchase? If so they're a live
+    # shopper again (for the new items) — not permanently "Converted".
+    order_ts = [e.get("ts", 0) for e in v.events if e.get("type") in ("purchase", "checkout")]
+    last_order_ts = max(order_ts) if order_ts else 0
+    has_new_intent = any(e.get("type") in _INTENT_EVENTS and e.get("ts", 0) > last_order_ts
+                         for e in v.events)
+    just_converted = (bool(v.orders) or bool(order_ts)) and not has_new_intent
     dwell = sum(e.get("dwell_ms", 0) for e in v.events) / 1000.0
 
     score = min(100, total_views * 5 + top_views * 9 + opened_detail * 6
@@ -697,7 +1060,7 @@ def profile(v: Visitor, record: bool = False) -> dict:
     }
     if v.events == [] or not v.events:
         segment, intent = "Unknown", "No signal yet"
-    elif checked_out:
+    elif just_converted:
         segment, intent = "Converted", "Purchased"
     elif model:
         segment, intent = model["bucket"], INTENT_TEXT[model["bucket"]]
@@ -793,7 +1156,9 @@ def next_best_action(v: Visitor, device: str) -> dict:
                 "rationale": "Already converted — marketing would be wasted."}
 
     if seg in ("Persuadable",):
-        names = [i["name"] for i in interests[:3]]
+        # Lead with items they're still considering — never the one they already bought.
+        active_interests = [i for i in interests if not i.get("bought")] or interests
+        names = [i["name"] for i in active_interests[:3]]
         if len(names) >= 2:
             item = ", ".join(names[:-1]) + f" & {names[-1]}"
         elif names:
@@ -814,8 +1179,8 @@ def next_best_action(v: Visitor, device: str) -> dict:
             reward_type = "discount + 2× points"
         dose_note = (f"right-sized to {disc}% (the smallest dose that converts; "
                      f"+${med['vs_flat20_margin']:.0f} margin vs a flat 20%)")
-        lead = interests[0] if interests else top
-        more = len(interests) - 1
+        lead = active_interests[0] if active_interests else top
+        more = len(active_interests) - 1
         headline = (f"Still comparing the {lead['emoji']} {lead['name']}"
                     + (f" (+{more} more)?" if more >= 1 else "?")) if lead else "Still thinking it over?"
         return {

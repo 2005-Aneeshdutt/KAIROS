@@ -125,8 +125,12 @@ export const store = {
       "/agent", { goal }, { answer: "", steps: [], source: "error" }
     ),
   people: () => get<{ people: any[] }>("/people", { people: [] }),
+  identity: (coreId: string) => get<any>(`/identity/${encodeURIComponent(coreId)}`, null),
+  identitySummary: () => get<any>("/analytics/identity", null),
   report: () => get<any>("/report", null),
   customerStrategy: (coreId: string) => get<any>(`/customer/${encodeURIComponent(coreId)}/strategy`, null),
+  sendMail: (coreId: string, device = "desktop") =>
+    post<any>(`/customer/${encodeURIComponent(coreId)}/send-mail`, { device }, { ok: false }),
   chat: (uid: string, message: string) =>
     post<{ reply: string; products: any[]; source: string }>(
       "/chat", { uid, message }, { reply: "Sorry, I had trouble — try again.", products: [], source: "error" }
@@ -173,11 +177,23 @@ export async function deletePerson(core_id: string): Promise<void> {
   }
 }
 
-export async function loginUser(email: string, name?: string): Promise<Session> {
+export type MergeInfo = {
+  merged: boolean; events?: number; devices?: string[]; sessions?: number;
+  total_events?: number; total_sessions?: number; signal_count?: number;
+};
+
+// The anonymous guest id (set while browsing logged-out), used to stitch guest
+// activity into the CORE ID on sign-in. Does NOT create one if absent.
+export function getGuestUid(): string {
+  if (typeof window === "undefined") return "";
+  return localStorage.getItem("conductor_uid") || "";
+}
+
+export async function loginUser(email: string, name?: string, guestUid?: string): Promise<Session> {
   const r = await fetch("/api/auth/login", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, name: name || "" }),
+    body: JSON.stringify({ email, name: name || "", guest_uid: guestUid ?? getGuestUid() }),
   });
   if (!r.ok) {
     const e = await r.json().catch(() => ({}));
@@ -186,7 +202,25 @@ export async function loginUser(email: string, name?: string): Promise<Session> 
   const d = await r.json();
   const s: Session = { core_id: d.core_id, email: d.email, name: d.name };
   setSession(s);
+  // The guest id is now resolved into the CORE ID — drop it so we don't re-merge.
+  try { localStorage.removeItem("conductor_uid"); } catch { /* ignore */ }
+  if (d.merge?.merged) {
+    try { sessionStorage.setItem("kairos_merge", JSON.stringify(d.merge)); } catch { /* ignore */ }
+  }
   return s;
+}
+
+// Pop the most recent identity-merge result (shown once as the "welcome back" moment).
+export function popMerge(): MergeInfo | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const m = sessionStorage.getItem("kairos_merge");
+    if (!m) return null;
+    sessionStorage.removeItem("kairos_merge");
+    return JSON.parse(m);
+  } catch {
+    return null;
+  }
 }
 
 export type Pattern = { code: string; label: string; detail: string; intent: "up" | "down"; icon: string };

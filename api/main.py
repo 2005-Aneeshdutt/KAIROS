@@ -149,10 +149,11 @@ def promotions():
 class LoginReq(BaseModel):
     email: str
     name: str = ""
+    guest_uid: str = ""
 
 @app.post("/auth/login")
 def auth_login(req: LoginReq):
-    res = trk.login(req.email, req.name)
+    res = trk.login(req.email, req.name, req.guest_uid)
     if res.get("error"):
         raise HTTPException(400, res["error"])
     return res
@@ -161,6 +162,29 @@ def auth_login(req: LoginReq):
 def people():
     return {"people": trk.list_people()}
 
+@app.get("/identity/{core_id}")
+def identity(core_id: str):
+    """CORE ID resolution graph — one person resolved from email + devices + channels +
+    sessions (including any stitched anonymous activity)."""
+    return trk.identity_graph(core_id)
+
+class SendMailReq(BaseModel):
+    device: str = "desktop"
+
+@app.post("/customer/{core_id}/send-mail")
+def customer_send_mail(core_id: str, req: SendMailReq | None = None):
+    """Marketer sends a targeted message to this customer; it lands in their inbox."""
+    res = trk.send_marketer_mail(core_id, (req.device if req else "desktop"))
+    if not res.get("ok"):
+        raise HTTPException(400, res.get("error", "could not send"))
+    return res
+
+@app.get("/analytics/identity")
+def analytics_identity():
+    """Fleet-wide CORE ID resolution analytics (people resolved, cross-device, signals
+    unified, anonymous sessions stitched)."""
+    return trk.identity_summary()
+
 @app.delete("/people/{core_id}")
 def delete_person(core_id: str):
     return trk.delete_person(core_id)
@@ -168,6 +192,12 @@ def delete_person(core_id: str):
 @app.post("/admin/reset")
 def admin_reset():
     return trk.reset_all()
+
+@app.post("/admin/seed")
+def admin_seed(reset: bool = True):
+    """Populate the demo with realistic people, a cross-device merge, and revenue —
+    so a freshly deployed instance isn't empty. Hit this once after deploy."""
+    return trk.seed_demo(reset)
 
 class ConsentReq(BaseModel):
     uid: str
@@ -184,29 +214,22 @@ def customer_strategy(core_id: str):
     dev = v.devices[-1] if v.devices else "desktop"
     p = trk.profile(v)
     nba = trk.next_best_action(v, dev)
-    top = (p.get("top_product") or {}).get("name") if p.get("top_product") else None
-    cart = [c.get("name") for c in (p.get("cart") or [])]
-    facts = (
-        f"Customer segment: {p['segment']}. Intent score {p['intent_score']}/100. "
-        f"Uplift {p.get('uplift')}, baseline {p.get('base_rate')}. "
-        f"Currently viewing: {top or 'nothing specific'}. Cart: {cart or 'empty'}. "
-        f"Events: {p['events']}. Consent to personalisation: {getattr(v, 'consent', True)}."
+    analysis = trk.analyze_customer(v)        # real-time behavioural analysis (the brain)
+    facts = trk.customer_facts(v)             # rich context for the LLM
+    system = (
+        "You are Kairos's marketing strategist advising on ONE specific shopper, using their REAL-TIME "
+        "behaviour below. Analyse what they have actually done — what they bought vs. still want, cart, "
+        "wishlist, uplift and intent — and recommend the single best move in 2-3 sentences: a decision "
+        "(SPEND / HOLD / SUPPRESS / SKIP / NURTURE), the channel, and the offer (or none). Name the "
+        "SPECIFIC product(s). Never re-pitch something they already bought — cross-sell instead. "
+        "Emphasise incrementality and restraint (don't discount people who'd buy anyway; don't contact "
+        "Sleeping Dogs). If consent is false, recommend no outbound contact. Be concrete; cite the numbers."
     )
-    system = ("You are Kairos's marketing strategist advising on ONE specific shopper. In 2-3 sentences, "
-              "recommend the single best action: SPEND / HOLD / SUPPRESS / SKIP, the channel, and the offer "
-              "(or none). Ground it in this shopper's data; emphasise incrementality and restraint. If "
-              "consent is false, respect it and recommend no outbound contact.")
-    narrative, src = ag.llm_complete(system, facts, 220)
-    if not narrative:
-        src = "template"
-        verb = {"Persuadable": "SPEND — marketing changes their outcome here",
-                "Sure Thing": "HOLD — they buy anyway; reward with loyalty, don't discount",
-                "Sleeping Dog": "SUPPRESS — contact lowers their conversion",
-                "Lost Cause": "SKIP — keep it cheap and ambient",
-                "Converted": "NURTURE — thank-you + cross-sell, no discount",
-                "Unknown": "OBSERVE — not enough signal yet"}.get(p["segment"], "OBSERVE")
-        narrative = f"{verb}. {nba.get('reason') or nba.get('rationale') or ''}".strip()
-    return {"segment": p["segment"], "next_best_action": nba, "narrative": narrative,
+    narrative, src = ag.llm_complete(system, facts, 240)
+    if not narrative or not narrative.strip():
+        narrative, src = analysis["narrative"], "analysis"     # analytical, action-specific fallback
+    return {"segment": p["segment"], "decision": analysis["decision"],
+            "next_best_action": nba, "narrative": narrative.strip(),
             "source": src, "consent": getattr(v, "consent", True)}
 
 class ChatReq(BaseModel):
@@ -314,7 +337,7 @@ def strategy():
     return trk.strategy_report()
 
 @app.get("/benchmark")
-def benchmark(n: int = Query(5000, ge=200, le=64000), seed: int = 42):
+def benchmark(n: int = Query(5000, ge=200, le=64000), seed: int = Query(42, ge=0, le=2147483647)):
     return sim.benchmark(n=n, seed=seed)
 
 @app.get("/inbox/{uid}")

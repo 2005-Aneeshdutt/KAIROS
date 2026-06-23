@@ -4,7 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  store, getUid, getSession, logout, setConsent, Session, Product, ProductDetail, Review, Bundle,
+  store, getUid, getSession, logout, setConsent, loginUser, popMerge, getGuestUid, MergeInfo,
+  Session, Product, ProductDetail, Review, Bundle,
   Coupon, Redemption, Promotions, Bundle2, InboxMail, Order,
 } from "@/lib/api";
 import { ChatBot } from "@/components/chatbot";
@@ -61,17 +62,30 @@ export default function StorePage() {
   const [activeDevice, setActiveDevice] = useState<"desktop" | "mobile">("desktop");
   const [ended, setEnded] = useState(false);
   const [me, setMe] = useState<Session | null>(null);
+  const [mergeInfo, setMergeInfo] = useState<MergeInfo | null>(null);
+  const [signInOpen, setSignInOpen] = useState(false);
   const lastView = useRef<Record<string, number>>({});
   const router = useRouter();
 
   useEffect(() => {
-    const s = getSession();
-    if (!s) { router.replace("/"); return; }
-    setMe(s);
+    // Anonymous browsing is allowed — identity resolves on sign-in (CORE ID stitch).
+    setMe(getSession());
     setUid(getUid());
+    const mg = popMerge();           // a merge that happened on the login page
+    if (mg) setMergeInfo(mg);
     store.catalogue().then((d) => { setProducts(d.products); setCats(d.categories); });
     store.promotions().then(setPromos);
-  }, [router]);
+  }, []);
+
+  async function signIn(email: string, name: string) {
+    const s = await loginUser(email.trim(), name.trim(), getGuestUid());
+    const mg = popMerge();
+    setMe(s);
+    setUid(s.core_id);               // future activity is keyed to the CORE ID
+    setSignInOpen(false);
+    if (mg?.merged) setMergeInfo(mg);
+    else setToast({ id: Date.now(), msg: `Welcome, ${s.name} ✓` });
+  }
 
   useEffect(() => {
     if (!uid || !products.length) return;
@@ -83,6 +97,14 @@ export default function StorePage() {
     }
 
   }, [uid, products]);
+
+  // Live inbox: signed-in shoppers see marketer-sent messages arrive without a refresh.
+  useEffect(() => {
+    if (!uid || !me) return;
+    const poll = () => store.inbox(uid).then((r) => r?.inbox && setInbox(r.inbox));
+    const t = setInterval(poll, 4000);
+    return () => clearInterval(t);
+  }, [uid, me]);
 
   function absorb(res: any) {
     if (!res) return;
@@ -231,6 +253,13 @@ export default function StorePage() {
                   className="text-xs text-slate-500 border border-slate-200 rounded-md px-2 py-1 hover:bg-slate-100">Sign out</button>
               </div>
             )}
+            {!me && (
+              <div className="flex items-center gap-2 pl-1">
+                <span className="text-[11px] text-slate-400 hidden sm:inline">👤 Guest</span>
+                <button onClick={() => setSignInOpen(true)}
+                  className="text-xs text-white px-3 py-1.5 rounded-md hover:opacity-90" style={{ background: BRAND }}>Sign in</button>
+              </div>
+            )}
           </div>
         </div>
         <div className="max-w-[1500px] mx-auto px-5 flex gap-1 overflow-x-auto pb-2">
@@ -241,6 +270,15 @@ export default function StorePage() {
           ))}
         </div>
       </header>
+
+      {!me && (
+        <div className="bg-amber-50 border-b border-amber-200 text-amber-900 text-xs">
+          <div className="max-w-[1500px] mx-auto px-5 py-2 flex items-center justify-between gap-3">
+            <span>👤 You&apos;re browsing as a guest — we&apos;re tracking this session anonymously. <b>Sign in</b> and we&apos;ll unify it with your CORE&nbsp;ID across every device.</span>
+            <button onClick={() => setSignInOpen(true)} className="text-white px-3 py-1 rounded-md shrink-0" style={{ background: BRAND }}>Sign in to unify →</button>
+          </div>
+        </div>
+      )}
 
       <div className="max-w-[1500px] mx-auto px-5 py-5">
 
@@ -374,8 +412,81 @@ export default function StorePage() {
         onCheckout={() => { setActiveDevice("mobile"); openCheckout(); }}
         onEndSession={() => { setActiveDevice("mobile"); endSession(); }} />}
       {toast && <Toast key={toast.id} msg={toast.msg} onDone={() => setToast(null)} />}
+      {signInOpen && <SignInModal onClose={() => setSignInOpen(false)} onSignIn={signIn} />}
+      {mergeInfo && <MergeModal m={mergeInfo} name={me?.name} coreId={me?.core_id} onClose={() => setMergeInfo(null)} />}
       {uid && <ChatBot uid={uid} onProduct={(p) => openDetail(p)} />}
     </main>
+  );
+}
+
+function SignInModal({ onClose, onSignIn }: { onClose: () => void; onSignIn: (email: string, name: string) => Promise<void> }) {
+  const [email, setEmail] = useState("");
+  const [name, setName] = useState("");
+  const [err, setErr] = useState("");
+  const [loading, setLoading] = useState(false);
+  async function submit(e: React.FormEvent) {
+    e.preventDefault(); setErr(""); setLoading(true);
+    try { await onSignIn(email, name); }
+    catch (x: any) { setErr(x?.message || "Sign in failed"); setLoading(false); }
+  }
+  return (
+    <div className="fixed inset-0 z-[70] bg-black/50 flex items-center justify-center p-4" onClick={onClose}>
+      <form onClick={(e) => e.stopPropagation()} onSubmit={submit} className="bg-white rounded-2xl w-[min(420px,95vw)] shadow-2xl p-6">
+        <div className="flex items-center justify-between">
+          <div className="font-extrabold text-xl" style={{ color: BRAND }}>VERVE</div>
+          <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-700">✕</button>
+        </div>
+        <h2 className="text-lg font-bold mt-3">Sign in to unify your CORE&nbsp;ID</h2>
+        <p className="text-xs text-slate-500 mt-1">We&apos;ll recognise you and merge this guest session with your activity across every device.</p>
+        <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com"
+          className="w-full bg-slate-100 border border-slate-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-slate-400 mt-4" />
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name (optional)"
+          className="w-full bg-slate-100 border border-slate-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-slate-400 mt-3" />
+        {err && <div className="text-xs text-rose-600 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2 mt-3">{err}</div>}
+        <button type="submit" disabled={loading} className="w-full text-white font-semibold rounded-xl py-2.5 mt-4 hover:opacity-90 disabled:opacity-50" style={{ background: BRAND }}>
+          {loading ? "Resolving identity…" : "Continue →"}
+        </button>
+        <p className="text-[10px] text-slate-400 mt-3 text-center">No password — your email becomes a privacy-safe CORE&nbsp;ID.</p>
+      </form>
+    </div>
+  );
+}
+
+function MergeModal({ m, name, coreId, onClose }: { m: MergeInfo; name?: string; coreId?: string; onClose: () => void }) {
+  const devs = (m.devices ?? []).join(" + ") || "this device";
+  return (
+    <div className="fixed inset-0 z-[80] bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} className="bg-white rounded-2xl w-[min(460px,95vw)] shadow-2xl overflow-hidden">
+        <div className="p-6 text-white text-center" style={{ background: "linear-gradient(120deg,#0d1320,#3b1d2a)" }}>
+          <div className="text-5xl mb-1">🔗</div>
+          <div className="text-xl font-extrabold">Welcome back{name ? `, ${name}` : ""}</div>
+          <div className="text-sm opacity-90 mt-1">Identity resolved — one person, unified.</div>
+        </div>
+        <div className="p-5">
+          <p className="text-sm text-slate-700 leading-relaxed">
+            We recognised you and unified <b>{m.events ?? 0} guest events</b> across <b>{devs}</b>
+            {m.sessions ? <> and <b>{m.sessions} session{m.sessions === 1 ? "" : "s"}</b></> : null} into your CORE&nbsp;ID.
+          </p>
+          <div className="grid grid-cols-3 gap-2 mt-4 text-center">
+            <Stat2 k="Sessions" v={`${m.total_sessions ?? m.sessions ?? 1}`} />
+            <Stat2 k="Events" v={`${m.total_events ?? m.events ?? 0}`} />
+            <Stat2 k="Signals" v={`${m.signal_count ?? 0}`} />
+          </div>
+          {coreId && <div className="text-center text-[11px] text-slate-400 font-mono mt-3">{coreId}</div>}
+          <button onClick={onClose} className="w-full text-white font-semibold rounded-xl py-2.5 mt-4 hover:opacity-90" style={{ background: BRAND }}>Continue shopping</button>
+          <div className="text-[10px] text-slate-400 text-center mt-2">This is CORE ID identity resolution — your full journey, stitched into one profile.</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Stat2({ k, v }: { k: string; v: string }) {
+  return (
+    <div className="bg-slate-50 border border-slate-200 rounded-xl py-2">
+      <div className="text-xl font-extrabold tabular-nums" style={{ color: BRAND }}>{v}</div>
+      <div className="text-[9px] uppercase tracking-wider text-slate-400">{k}</div>
+    </div>
   );
 }
 

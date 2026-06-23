@@ -84,7 +84,8 @@ export default function LandingLogin() {
             No password needed — your email becomes a privacy-safe CORE&nbsp;ID. By continuing you agree your
             on-site activity is used to personalise your experience.
           </p>
-          <div className="mt-6 text-center">
+          <div className="mt-6 text-center flex flex-col gap-1.5">
+            <Link href="/store" className="text-xs text-slate-400 hover:text-slate-200">Browse as a guest → <span className="text-slate-600">(we&apos;ll unify it when you sign in)</span></Link>
             <Link href="/dashboard" className="text-xs text-slate-500 hover:text-slate-300">View the company dashboard →</Link>
           </div>
         </form>

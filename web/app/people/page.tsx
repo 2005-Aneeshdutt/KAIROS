@@ -29,6 +29,18 @@ export default function PeoplePage() {
   const [prods, setProds] = useState<Record<string, string>>({});
   const [strat, setStrat] = useState<any>(null);
   const [stratLoading, setStratLoading] = useState(false);
+  const [ident, setIdent] = useState<any>(null);
+  const [idSummary, setIdSummary] = useState<any>(null);
+  const [sending, setSending] = useState(false);
+  const [sentMail, setSentMail] = useState<any>(null);
+
+  async function sendMail(cid: string) {
+    setSending(true); setSentMail(null);
+    const r = await store.sendMail(cid);
+    setSending(false);
+    if (r?.ok) setSentMail(r);
+    else alert(r?.error || "Could not send (customer may have opted out).");
+  }
 
   useEffect(() => {
     store.catalogue().then((d) => {
@@ -41,9 +53,19 @@ export default function PeoplePage() {
   useLiveData<{ people: any[] }>("/people", (d) => setPeople(d.people || []));
 
   useEffect(() => {
-    setStrat(null);
-    if (!sel) { setDetail(null); return; }
-    const poll = () => store.visitor(sel).then((d) => d && setDetail(d));
+    const poll = () => store.identitySummary().then((d) => d && setIdSummary(d));
+    poll();
+    const t = setInterval(poll, 3000);
+    return () => clearInterval(t);
+  }, []);
+
+  useEffect(() => {
+    setStrat(null); setSentMail(null);
+    if (!sel) { setDetail(null); setIdent(null); return; }
+    const poll = () => {
+      store.visitor(sel).then((d) => d && setDetail(d));
+      store.identity(sel).then((d) => d && setIdent(d));
+    };
     poll();
     const t = setInterval(poll, 2000);
     return () => clearInterval(t);
@@ -99,6 +121,16 @@ export default function PeoplePage() {
         <button onClick={doReset} className="text-xs text-slate-400 border border-line rounded-md px-2.5 py-1.5 hover:bg-panel2 shrink-0">↺ Reset demo data</button>
       </header>
 
+      {idSummary && (
+        <section className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-5">
+          <IdStat label="People resolved" value={`${idSummary.resolved}/${idSummary.people}`} sub="≥2 signals" accent="text-epsilon" />
+          <IdStat label="Cross-device" value={`${idSummary.cross_device}`} sub="2+ devices, one ID" />
+          <IdStat label="Signals unified" value={`${idSummary.signals_unified}`} sub={`avg ${idSummary.avg_signals}/person`} />
+          <IdStat label="Guest sessions stitched" value={`${idSummary.stitched_sessions}`} sub={`${idSummary.stitched_people} merges`} accent="text-sure" />
+          <IdStat label="Channels unified" value={`${Object.keys(idSummary.channels || {}).length}`} sub={Object.keys(idSummary.channels || {}).join(" · ") || "—"} />
+        </section>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {/* Left: people list */}
         <div className="card lg:col-span-1 p-0 overflow-hidden">
@@ -134,6 +166,7 @@ export default function PeoplePage() {
             <div className="card text-center text-slate-500 py-16">Select a customer to view their profile and logs.</div>
           ) : (
             <>
+              {ident && <IdentityGraph g={ident} />}
               <div className="card">
                 <div className="flex items-start justify-between flex-wrap gap-3">
                   <div>
@@ -159,11 +192,54 @@ export default function PeoplePage() {
                   <Metric label="Orders" value={`${selPerson.orders}`} />
                   <Metric label="Spent" value={fmtUSD(selPerson.revenue || 0)} accent="text-persuadable" />
                 </div>
+                {/* Recent products & per-product intent (the live consideration set) */}
+                {prof?.interests?.length > 0 && (
+                  <div className="mt-4">
+                    <div className="text-[10px] uppercase tracking-widest text-slate-500 mb-2">Recently browsed · live intent</div>
+                    <div className="space-y-1.5">
+                      {prof.interests.map((it: any) => (
+                        <div key={it.id} className="flex items-center gap-2">
+                          <span className="text-base">{it.emoji}</span>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs text-slate-200 truncate">{it.name}</span>
+                              <span className="text-[10px] text-slate-400 tabular-nums ml-2">{it.intent}</span>
+                            </div>
+                            <div className="h-1.5 bg-panel2 rounded-full overflow-hidden mt-0.5">
+                              <div className="h-full" style={{ width: `${it.intent}%`, background: it.bought ? "#a855f7" : BUCKET_COLOR.Persuadable }} />
+                            </div>
+                          </div>
+                          {it.bought ? <span className="text-[9px] px-1 rounded bg-violet-500/20 text-violet-300">bought</span>
+                            : it.in_cart ? <span className="text-[9px] px-1 rounded bg-emerald-500/20 text-emerald-300">cart</span>
+                            : it.in_wishlist ? <span className="text-[9px] px-1 rounded bg-rose-500/20 text-rose-300">wish</span>
+                            : <span className="text-[9px] text-slate-500">{it.views}×</span>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {nba && (
                   <div className="mt-4 bg-panel2 border border-line rounded-xl p-3">
-                    <div className="text-[10px] uppercase tracking-widest text-epsilon mb-1">Kairos next best action</div>
-                    <div className="text-sm text-slate-200">{nba.action || nba.headline || nba.title || "—"}{nba.channel ? ` · via ${nba.channel}` : ""}</div>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="text-[10px] uppercase tracking-widest text-epsilon">Kairos next best action</div>
+                      <button onClick={() => sendMail(selPerson.core_id)} disabled={sending || selPerson.consent === false}
+                        className="text-[11px] font-semibold px-2.5 py-1 rounded-md bg-epsilon/20 text-epsilon hover:bg-epsilon/30 disabled:opacity-40 shrink-0"
+                        title={selPerson.consent === false ? "Customer opted out of personalisation" : "Send this targeted message to the customer's inbox"}>
+                        {sending ? "Sending…" : "📧 Send mail"}
+                      </button>
+                    </div>
+                    <div className="text-sm text-slate-200 mt-1">{nba.headline || nba.action || nba.title || "—"}{nba.channel ? ` · via ${nba.channel}` : ""}</div>
+                    {(nba.message) && <div className="text-xs text-slate-400 mt-0.5">{nba.message}</div>}
                     {(nba.reason || nba.rationale || nba.why) && <div className="text-xs text-slate-500 mt-1">{nba.reason || nba.rationale || nba.why}</div>}
+                  </div>
+                )}
+
+                {sentMail && (
+                  <div className="mt-2 bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-3">
+                    <div className="text-xs text-emerald-300 font-semibold">✓ Sent to {sentMail.to || "the customer"} via {sentMail.channel} — it&apos;s in their inbox now.</div>
+                    <div className="text-sm text-slate-200 mt-1">{sentMail.mail?.subject}</div>
+                    <div className="text-xs text-slate-500">{sentMail.mail?.preview}</div>
                   </div>
                 )}
                 <div className="mt-3">
@@ -173,11 +249,12 @@ export default function PeoplePage() {
                   </button>
                   {strat && (
                     <div className="mt-2 bg-panel2 border border-epsilon/30 rounded-xl p-3">
+                      {strat.decision && <div className="text-sm font-bold text-epsilon mb-1">{strat.decision}</div>}
                       <div className="text-sm text-slate-200 whitespace-pre-wrap leading-relaxed">{strat.narrative}</div>
                       <div className="text-[10px] text-slate-500 mt-1.5">
-                        {strat.source === "openrouter" ? "✦ reasoned by the live LLM (OpenRouter)"
-                          : strat.source === "claude" ? "✦ reasoned by Claude"
-                          : "✦ rule-based recommendation"}
+                        {strat.source === "openrouter" ? "✦ reasoned live by the LLM (OpenRouter)"
+                          : strat.source === "claude" ? "✦ reasoned live by Claude"
+                          : "✦ Kairos real-time behavioural analysis"}
                       </div>
                     </div>
                   )}
@@ -235,6 +312,67 @@ export default function PeoplePage() {
       </div>
     </main>
     </Shell>
+  );
+}
+
+function IdStat({ label, value, sub, accent }: { label: string; value: string; sub?: string; accent?: string }) {
+  return (
+    <div className="card !p-3">
+      <div className="text-[10px] uppercase tracking-wider text-slate-500">{label}</div>
+      <div className={`text-2xl font-bold tabular-nums ${accent ?? "text-slate-100"}`}>{value}</div>
+      {sub && <div className="text-[10px] text-slate-500 truncate">{sub}</div>}
+    </div>
+  );
+}
+
+function IdentityGraph({ g }: { g: any }) {
+  const devices = (g.devices ?? []).map((d: string) => ({ icon: d === "mobile" ? "📱" : d === "tablet" ? "📟" : "💻", label: d[0].toUpperCase() + d.slice(1) }));
+  const CHAN_ICON: Record<string, string> = { Web: "🌐", Chatbot: "💬", Email: "📬" };
+  const channels = (g.channels ?? []).map((c: string) => ({ icon: CHAN_ICON[c] ?? "🔗", label: c }));
+  const merged = (g.merged_from ?? []).length > 0;
+  return (
+    <div className="card" style={{ background: "linear-gradient(180deg,rgba(230,0,90,0.05),transparent)" }}>
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="card-title mb-0 flex items-center gap-2">🔗 Identity Resolution <span className="text-[10px] font-normal text-slate-500">CORE&nbsp;ID graph</span></div>
+        <span className="pill text-[10px] bg-epsilon/15 text-epsilon">1 person · resolved from {g.signal_count} signals</span>
+      </div>
+
+      {/* hub + spokes */}
+      <div className="mt-4 flex flex-col items-center">
+        <div className="text-center bg-ink border border-epsilon/40 rounded-2xl px-5 py-3 shadow-lg">
+          <div className="text-[10px] uppercase tracking-widest text-epsilon">CORE ID</div>
+          <div className="font-mono font-bold text-slate-100">{g.core_id}</div>
+          <div className="text-xs text-slate-400">{g.name}{g.email ? ` · ${g.email}` : ""}</div>
+        </div>
+        <div className="w-px h-4 bg-line" />
+        <div className="flex flex-wrap items-start justify-center gap-2">
+          {g.signals.map((s: any, i: number) => (
+            <div key={i} className="flex flex-col items-center">
+              <div className="w-px h-3 bg-line" />
+              <div className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs border ${s.type === "email" ? "border-epsilon/40 bg-epsilon/10 text-epsilon" : s.type === "device" ? "border-sky-500/30 bg-sky-500/10 text-sky-300" : "border-violet-500/30 bg-violet-500/10 text-violet-300"}`}>
+                <span>{s.icon}</span><span>{s.label}</span>
+                <span className="text-[8px] uppercase tracking-wider opacity-60">{s.type}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-4 gap-2 mt-5 text-center">
+        <Metric label="Devices" value={`${g.devices?.length ?? 0}`} />
+        <Metric label="Channels" value={`${g.channels?.length ?? 0}`} />
+        <Metric label="Sessions" value={`${g.sessions ?? 0}`} />
+        <Metric label="Events" value={`${g.events ?? 0}`} />
+      </div>
+
+      {merged && (
+        <div className="mt-3 text-xs text-emerald-300 bg-emerald-500/10 border border-emerald-500/30 rounded-lg px-3 py-2">
+          ✓ Anonymous → known: stitched {g.merged_from.reduce((a: number, m: any) => a + (m.events || 0), 0)} guest event(s)
+          {g.merged_sessions ? ` across ${g.merged_sessions} guest session(s)` : ""} into this CORE&nbsp;ID on sign-in.
+        </div>
+      )}
+      <p className="text-[11px] text-slate-500 mt-2">One unified person resolved from {channels.length} channel(s) and {devices.length} device(s) — deterministic identity resolution, the foundation of seamless cross-channel journeys.</p>
+    </div>
   );
 }
 

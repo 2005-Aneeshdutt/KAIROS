@@ -207,6 +207,8 @@ def rct_validation() -> dict:
     }
 
 def benchmark(n: int = 5000, seed: int = 42) -> dict:
+    seed = abs(int(seed)) % (2 ** 32)        # pandas/numpy random_state must be non-negative
+    n = max(1, min(int(n), 64000))
     rng = random.Random(seed)
     pop = _population()
     sample = pop.sample(min(n, len(pop)), random_state=seed)
