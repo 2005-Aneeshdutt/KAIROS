@@ -60,6 +60,7 @@ def bandit() -> dict:
 def health():
     import db
     return {"status": "ok", "persistence": db.backend(),
+            "live_model": trk.live_model_loaded(),
             "artifacts": [p.name for p in ART.glob("*")]}
 
 @app.get("/segments")

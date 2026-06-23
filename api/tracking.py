@@ -23,9 +23,14 @@ def _live_model():
     if _LIVE_MODEL is None:
         try:
             _LIVE_MODEL = joblib.load(_LIVE_PATH)
-        except Exception:
+        except Exception as e:
+            print(f"[live_model] failed to load ({e!r}); falling back to heuristic scoring")
             _LIVE_MODEL = {}
     return _LIVE_MODEL
+
+
+def live_model_loaded() -> bool:
+    return bool(_live_model())
 
 PRODUCTS = [
     {"id": "p1", "name": "Floral Wrap Dress", "price": 79, "cat": "Women", "emoji": "👗", "rating": 4.7, "blurb": "Flowy midi, breathable viscose"},
