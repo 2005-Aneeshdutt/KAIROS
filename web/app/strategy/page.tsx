@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { store, fmtUSD, BUCKET_COLOR } from "@/lib/api";
+import { api, store, fmtUSD, BUCKET_COLOR } from "@/lib/api";
 import { AgentPanel } from "@/components/agent-panel";
 import { Shell } from "@/components/shell";
 
@@ -57,6 +57,7 @@ ${recs ? `<ul>${recs}</ul>` : ""}
 export default function StrategyPage() {
   const [s, setS] = useState<any>(null);
   const [bench, setBench] = useState<any>(null);
+  const [alloc, setAlloc] = useState<any>(null);
   const [benchLoading, setBenchLoading] = useState(false);
   const [dl, setDl] = useState(false);
 
@@ -87,12 +88,16 @@ export default function StrategyPage() {
     if (b) setBench(b);
     setBenchLoading(false);
   }
-  useEffect(() => { runBenchmark(42); }, []);
+  useEffect(() => { runBenchmark(42); api.allocation().then((a: any) => a && setAlloc(a)); }, []);
 
   const h = s?.headline ?? {};
   const f = s?.funnel ?? {};
   const segs = s?.segments ?? [];
   const recs = s?.recommendations ?? [];
+
+  const sdRct = (bench?.validation?.buckets ?? []).find((b: any) => b.bucket === "Sleeping Dog");
+  const protectedRev: number = alloc?.restraint_metrics?.revenue_protected
+    ?? (sdRct ? (sdRct.n_treated + sdRct.n_control) * (sdRct.control_conv_pct - sdRct.treated_conv_pct) / 100 * (bench?.validation?.aov ?? 116) : 0);
 
   const funnelSteps = [
     { k: "Visitors", v: f.visitors ?? 0 },
@@ -203,6 +208,9 @@ export default function StrategyPage() {
         </div>
       </section>
 
+      {/* Sleeping Dog spotlight — the hero proof that prediction ≠ decisioning */}
+      {sdRct && <SleepingDogSpotlight sd={sdRct} protectedRev={protectedRev} />}
+
       {/* Real-RCT validation — the credibility anchor (measured, not modelled) */}
       {bench?.validation && <RctValidation v={bench.validation} />}
 
@@ -272,6 +280,61 @@ function BenchDelta({ label, value, sub }: { label: string; value: string; sub: 
       <div className="text-xl font-bold text-epsilon tabular-nums">{value}</div>
       <div className="text-[10px] text-slate-500">{sub}</div>
     </div>
+  );
+}
+
+function SdBar({ label, pct, max, color }: { label: string; pct: number; max: number; color: string }) {
+  return (
+    <div className="mb-2">
+      <div className="flex justify-between text-[11px] mb-0.5"><span className="text-slate-400">{label}</span><span className="tabular-nums font-semibold text-slate-100">{pct}%</span></div>
+      <div className="h-2.5 bg-panel rounded-full overflow-hidden">
+        <div className="h-full rounded-full transition-all duration-700" style={{ width: `${(pct / max) * 100}%`, background: color }} />
+      </div>
+    </div>
+  );
+}
+
+function SleepingDogSpotlight({ sd, protectedRev }: { sd: any; protectedRev: number }) {
+  const drop = Math.abs(sd.abs_uplift_pp);
+  const rel = Math.abs(sd.rel_lift_pct ?? Math.round((1 - sd.treated_conv_pct / sd.control_conv_pct) * 100));
+  const max = Math.max(sd.treated_conv_pct, sd.control_conv_pct);
+  return (
+    <section className="card mt-6 border border-amber-500/40 bg-gradient-to-br from-amber-500/[0.08] via-transparent to-rose-500/[0.05]">
+      <div className="flex items-center gap-3 mb-4">
+        <span className="text-3xl">😴</span>
+        <div>
+          <div className="font-bold text-amber-300 text-[15px]">Sleeping Dog spotlight — the segment everyone else markets <i>to</i></div>
+          <div className="text-[11px] text-slate-500">Negative-uplift customers. Propensity targets them; only causal models know to stay silent.</div>
+        </div>
+        <span className="ml-auto pill text-[11px] bg-rose-500/20 text-rose-300 border border-rose-500/30">→ SUPPRESS</span>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="bg-rose-500/[0.06] border border-rose-500/25 rounded-xl p-4 text-center flex flex-col justify-center">
+          <div className="text-[10px] uppercase tracking-wider text-slate-500">Contacting them does this</div>
+          <div className="text-5xl font-black text-rose-300 tabular-nums leading-none mt-1">−{drop}<span className="text-2xl">pp</span></div>
+          <div className="text-[11px] text-slate-400 mt-2">conversion vs. leaving them alone · <b className="text-rose-300">−{rel}%</b></div>
+        </div>
+
+        <div className="bg-panel2 border border-line rounded-xl p-4">
+          <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-2.5">Measured in the RCT</div>
+          <SdBar label="📣 Contacted" pct={sd.treated_conv_pct} max={max} color="#ef4444" />
+          <SdBar label="🤫 Left alone (control)" pct={sd.control_conv_pct} max={max} color="#22c55e" />
+          <div className="text-[10px] text-slate-500 mt-1.5">They buy <b className="text-emerald-300">more</b> when you say nothing.</div>
+        </div>
+
+        <div className="bg-emerald-500/[0.06] border border-emerald-500/25 rounded-xl p-4 text-center flex flex-col justify-center">
+          <div className="text-[10px] uppercase tracking-wider text-slate-500">Revenue protected by silence</div>
+          <div className="text-4xl font-black text-emerald-300 tabular-nums leading-none mt-1">{fmtUSD(protectedRev)}</div>
+          <div className="text-[11px] text-slate-400 mt-2">organic sales Kairos keeps by <b>not</b> contacting them</div>
+        </div>
+      </div>
+
+      <p className="text-xs text-slate-500 mt-3">
+        A propensity model sees a <b className="text-slate-300">{sd.control_conv_pct}%</b> baseline and happily targets them — and <i>destroys</i> the sale.
+        This is the segment that proves <b className="text-amber-300">prediction ≠ decisioning</b>.
+      </p>
+    </section>
   );
 }
 
