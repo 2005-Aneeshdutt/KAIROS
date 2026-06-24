@@ -11,6 +11,14 @@ const SEG_COLOR: Record<string, string> = {
   "Sleeping Dog": "#eab308", Converted: "#a855f7", Unknown: "#64748b",
 };
 const BRAND = "#e31837";
+const DECISION: Record<string, string> = {
+  Persuadable: "→ SPEND · incremental",
+  "Sure Thing": "→ HOLD · buys anyway",
+  "Sleeping Dog": "→ SUPPRESS · backfires",
+  "Lost Cause": "→ SKIP · no effect",
+  Converted: "→ NURTURE · no discount",
+  Unknown: "→ OBSERVE",
+};
 
 export default function ConsolePage() {
   const [shoppers, setShoppers] = useState<any[]>([]);
@@ -121,17 +129,23 @@ export default function ConsolePage() {
                   <div className="h-full transition-all duration-500" style={{ width: `${p.intent_score}%`, background: BRAND }} />
                 </div>
                 {p.uplift != null && (
-                  <div className="bg-panel2 rounded-lg p-2.5 mb-3 border border-line">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] uppercase tracking-widest text-slate-500">Causal uplift</span>
-                      <span className="text-[9px] text-emerald-400">● {p.scored_by}</span>
+                  <div className="mb-3">
+                    <div className="text-[10px] uppercase tracking-widest text-slate-500 mb-1.5">How two models see this shopper</div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="bg-panel2 rounded-lg p-2.5 border border-rose-500/30">
+                        <div className="text-[10px] text-rose-300 font-semibold">Traditional · propensity</div>
+                        <div className="text-lg font-bold text-slate-200 mt-0.5 tabular-nums">{(p.base_rate * 100).toFixed(0)}%</div>
+                        <div className="text-[10px] text-slate-500">P(buy) → would target &amp; discount</div>
+                      </div>
+                      <div className="bg-panel2 rounded-lg p-2.5 border border-emerald-500/30">
+                        <div className="text-[10px] text-emerald-300 font-semibold">Kairos · causal uplift</div>
+                        <div className="text-lg font-bold mt-0.5 tabular-nums" style={{ color: p.uplift >= 0 ? "#22c55e" : "#ef4444" }}>{p.uplift >= 0 ? "+" : ""}{(p.uplift * 100).toFixed(1)}%</div>
+                        <div className="text-[10px] text-slate-400">{DECISION[p.segment] ?? "→ evaluate"}</div>
+                      </div>
                     </div>
-                    <div className="flex items-baseline gap-3 mt-1">
-                      <span className="text-xl font-bold" style={{ color: p.uplift >= 0 ? "#22c55e" : "#ef4444" }}>{(p.uplift * 100).toFixed(1)}%</span>
-                      <span className="text-xs text-slate-400">incremental lift</span>
-                      <span className="text-xs text-slate-500 ml-auto">base {(p.base_rate * 100).toFixed(1)}% · +${p.inc_value}</span>
+                    <div className="text-[10px] text-slate-500 mt-1.5 leading-relaxed">
+                      Propensity targets people who&apos;d buy <i>anyway</i>; uplift spends only where marketing <b className="text-slate-300">changes the decision</b>. <span className="text-emerald-400/80">● scored live by {p.scored_by}</span>
                     </div>
-                    <div className="text-[10px] text-slate-500 mt-1">This is a model prediction on live behavior — not a rule.</div>
                   </div>
                 )}
                 <div className="grid grid-cols-4 gap-2 text-center">

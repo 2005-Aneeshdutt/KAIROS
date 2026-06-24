@@ -69,6 +69,9 @@ export default function StorePage() {
 
   useEffect(() => {
     // Anonymous browsing is allowed — identity resolves on sign-in (CORE ID stitch).
+    // Detect a real phone so its activity logs as "mobile" (drives cross-device CORE ID).
+    if (typeof navigator !== "undefined" && /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent))
+      setActiveDevice("mobile");
     setMe(getSession());
     setUid(getUid());
     const mg = popMerge();           // a merge that happened on the login page
@@ -121,12 +124,13 @@ export default function StorePage() {
     absorb(await store.track({ uid, type, product_id: product?.id, device, dwell_ms }));
   }
 
-  async function openDetail(p: Product, device: "desktop" | "mobile" = "desktop") {
-    setActiveDevice(device);
+  async function openDetail(p: Product, device?: "desktop" | "mobile") {
+    const dev = device ?? activeDevice;     // keep the real device (don't reset phone -> desktop)
+    setActiveDevice(dev);
     const now = Date.now();
     const dwell = lastView.current[p.id] ? now - lastView.current[p.id] : 3500;
     lastView.current[p.id] = now;
-    send("view_product", p, Math.min(dwell, 12000), device);
+    send("view_product", p, Math.min(dwell, 12000), dev);
     setDetail(await store.product(p.id));
   }
 
@@ -206,7 +210,7 @@ export default function StorePage() {
   const recs = topCat ? products.filter((p) => p.cat === topCat && p.id !== profile?.top_product?.id).slice(0, 6) : [];
 
   return (
-    <main className="min-h-screen bg-[#f3f4f6] text-slate-900">
+    <main className="min-h-screen text-slate-900" style={{ background: "radial-gradient(900px 500px at 100% -5%, rgba(227,24,55,0.07), transparent), radial-gradient(700px 400px at 0% 10%, rgba(99,102,241,0.06), transparent), linear-gradient(180deg,#f8f9fb,#eceff4)" }}>
 
       <div className="bg-slate-900 text-white text-xs overflow-hidden whitespace-nowrap">
         <div className="inline-flex animate-marquee py-1.5">
@@ -520,7 +524,7 @@ const BADGE_STYLE: Record<string, string> = {
 function ProductCard({ p, wished, onOpen, onWish, onAdd }: { p: Product; wished: boolean; onOpen: () => void; onWish: () => void; onAdd: () => void; }) {
   const onSale = p.discount_pct && p.discount_pct > 0;
   return (
-    <div onClick={onOpen} className="group relative bg-white border border-slate-200 rounded-xl p-3 cursor-pointer hover:shadow-lg hover:border-slate-300 transition">
+    <div onClick={onOpen} className="group relative bg-white/70 backdrop-blur-md ring-1 ring-slate-200/70 border border-white/60 rounded-2xl p-3 cursor-pointer shadow-[0_4px_20px_rgba(15,23,42,0.06)] hover:shadow-[0_16px_40px_rgba(15,23,42,0.14)] hover:-translate-y-1 hover:ring-slate-300 transition-all duration-300">
       <span className={`absolute top-2 left-2 z-10 text-[10px] font-bold text-white px-1.5 py-0.5 rounded ${OFFER_STYLE[p.offer_kind ?? "discount"]}`}>{p.offer}</span>
       <button onClick={(e) => { e.stopPropagation(); onWish(); }} className="absolute top-2 right-2 z-10 text-lg leading-none transition" style={{ color: wished ? BRAND : "#94a3b8" }}>{wished ? "♥" : "♡"}</button>
       <div className="group-hover:scale-[1.03] transition"><ProductImage p={p} /></div>

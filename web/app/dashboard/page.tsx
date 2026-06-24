@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api, store, BUCKET_COLOR, Customer, fmtUSD, Segment } from "@/lib/api";
-import { BanditChart, MarginalRoiChart, QiniChart, SegmentScatter } from "@/components/charts";
+import { BanditChart, MarginalRoiChart, QiniChart, SegmentScatter, RestraintWaterfall, UpliftHistogram } from "@/components/charts";
 import { AgentPanel } from "@/components/agent-panel";
 import { Shell } from "@/components/shell";
 import { useLiveData } from "@/lib/use-live";
@@ -21,10 +21,12 @@ export default function Page() {
   const [loadingExplain, setLoadingExplain] = useState(false);
   const [liveAnalytics, setLiveAnalytics] = useState<any>(null);
   const [liveShoppers, setLiveShoppers] = useState<any>(null);
+  const [hist, setHist] = useState<any>(null);
 
   useEffect(() => {
     api.segments().then((d) => { setSegments(d.segments); setTotal(d.total_customers); });
     api.qini().then(setQini);
+    api.upliftHistogram().then(setHist);
     api.bandit().then(setBandit);
     api.allocation().then((a) => { setAlloc(a); setBudget(a?.knee?.budget ?? 0); });
 
@@ -217,6 +219,14 @@ export default function Page() {
         </div>
 
         <div className="card lg:col-span-3">
+          <div className="card-title">Uplift distribution — where the money is</div>
+          <UpliftHistogram bins={hist?.bins ?? []} />
+          <p className="text-xs text-slate-500 mt-1">
+            Each bar = customers at that incremental lift. <span className="text-lost">Left of 0</span> are Sleeping Dogs (marketing <i>hurts</i> them); the <span className="text-persuadable">high-uplift right tail</span> is where every dollar is incremental — that&apos;s where Kairos spends.
+          </p>
+        </div>
+
+        <div className="card lg:col-span-3">
           <div className="flex items-center justify-between">
             <div className="card-title mb-0">Channel orchestration — self-optimizing bandit</div>
             {bandit?.summary && (
@@ -229,6 +239,17 @@ export default function Page() {
           <BanditChart curve={bandit?.curve ?? []} />
           <p className="text-xs text-slate-500 mt-1">
             A Thompson-sampling bandit learns the best channel per segment online — the gap above Random is money the system earns by adapting.
+          </p>
+        </div>
+
+        <div className="card lg:col-span-3">
+          <div className="flex items-center justify-between">
+            <div className="card-title mb-0">Where the value comes from — restraint in dollars</div>
+            <div className="text-sm text-slate-300">Total impact <span className="text-epsilon font-semibold">{fmtUSD(totalImpact)}</span></div>
+          </div>
+          <RestraintWaterfall m={m} />
+          <p className="text-xs text-slate-500 mt-1">
+            Most of the value isn&apos;t from spending more — it&apos;s from <span className="text-sure">not</span> discounting Sure Things and <span className="text-dog">not</span> contacting Sleeping Dogs. Restraint, in dollars.
           </p>
         </div>
       </div>
@@ -310,7 +331,7 @@ function LiveShoppers({ data }: { data: any }) {
                     </div>
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums text-slate-300">{s.events}</td>
-                  <td className="px-3 py-2 text-slate-400 text-xs">{s.top_product ?? "—"}</td>
+                  <td className="px-3 py-2 text-slate-400 text-xs">{s.looking_at ?? s.top_product ?? "—"}</td>
                   <td className="px-3 py-2 text-right text-xs text-slate-500 tabular-nums">{(s.seconds_ago ?? 0) <= 2 ? "now" : `${s.seconds_ago}s ago`}</td>
                 </tr>
               ))}

@@ -29,6 +29,7 @@ export default function PeoplePage() {
   const [prods, setProds] = useState<Record<string, string>>({});
   const [strat, setStrat] = useState<any>(null);
   const [stratLoading, setStratLoading] = useState(false);
+  const [drivers, setDrivers] = useState<any>(null);
   const [ident, setIdent] = useState<any>(null);
   const [idSummary, setIdSummary] = useState<any>(null);
   const [sending, setSending] = useState(false);
@@ -60,8 +61,9 @@ export default function PeoplePage() {
   }, []);
 
   useEffect(() => {
-    setStrat(null); setSentMail(null);
+    setStrat(null); setSentMail(null); setDrivers(null);
     if (!sel) { setDetail(null); setIdent(null); return; }
+    store.customerDrivers(sel).then((d) => d && setDrivers(d));   // once per selection (compute-heavy)
     const poll = () => {
       store.visitor(sel).then((d) => d && setDetail(d));
       store.identity(sel).then((d) => d && setIdent(d));
@@ -219,6 +221,31 @@ export default function PeoplePage() {
                   </div>
                 )}
 
+                {drivers?.available && drivers.drivers?.length > 0 && (
+                  <div className="mt-4">
+                    <div className="text-[10px] uppercase tracking-widest text-slate-500 mb-1.5">
+                      Why this decision — causal drivers <span className="text-slate-600 normal-case">· ablation on the uplift model</span>
+                    </div>
+                    <div className="space-y-1.5">
+                      {drivers.drivers.map((d: any, i: number) => {
+                        const pos = d.contribution_pp >= 0;
+                        const peak = Math.abs(drivers.drivers[0].contribution_pp) || 1;
+                        const mag = Math.min(100, (Math.abs(d.contribution_pp) / peak) * 100);
+                        return (
+                          <div key={i} className="flex items-center gap-2 text-xs">
+                            <span className="w-44 truncate text-slate-300">{d.feature} <span className="text-slate-500">×{d.value}</span></span>
+                            <div className="flex-1 h-1.5 bg-panel2 rounded-full overflow-hidden">
+                              <div className="h-full" style={{ width: `${mag}%`, background: pos ? "#22c55e" : "#ef4444" }} />
+                            </div>
+                            <span className={`tabular-nums w-14 text-right ${pos ? "text-emerald-300" : "text-rose-300"}`}>{pos ? "+" : ""}{d.contribution_pp}pp</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <p className="text-[10px] text-slate-600 mt-1.5">Each bar = how much that behaviour moves this shopper&apos;s incremental uplift — the model&apos;s own reasoning, not a rule.</p>
+                  </div>
+                )}
+
                 {nba && (
                   <div className="mt-4 bg-panel2 border border-line rounded-xl p-3">
                     <div className="flex items-center justify-between gap-2">
@@ -372,6 +399,30 @@ function IdentityGraph({ g }: { g: any }) {
         </div>
       )}
       <p className="text-[11px] text-slate-500 mt-2">One unified person resolved from {channels.length} channel(s) and {devices.length} device(s) — deterministic identity resolution, the foundation of seamless cross-channel journeys.</p>
+
+      <div className="mt-3 border-t border-line pt-3">
+        <div className="flex items-center justify-between">
+          <span className="text-[10px] uppercase tracking-widest text-slate-500">🔒 Privacy &amp; consent ledger</span>
+          {g.consent === false
+            ? <span className="pill text-[9px] bg-amber-500/15 text-amber-300">⚠ opted out</span>
+            : <span className="pill text-[9px] bg-emerald-500/15 text-emerald-300">✓ consented</span>}
+        </div>
+        {g.consent_log?.length ? (
+          <ul className="mt-1.5 space-y-1">
+            {g.consent_log.slice(0, 4).map((c: any, i: number) => (
+              <li key={i} className="flex items-center justify-between text-[11px]">
+                <span className={c.consent ? "text-emerald-300" : "text-amber-300"}>
+                  {c.consent ? "✓ Consent granted" : "⛔ Consent withdrawn"}
+                </span>
+                <span className="text-slate-500 tabular-nums">{ago(c.ts)}</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-[11px] text-slate-500 mt-1">Consented at sign-in · no changes. Every touch checks this first.</p>
+        )}
+        <p className="text-[10px] text-slate-600 mt-1.5">Privacy-safe CORE&nbsp;ID — outreach is suppressed the instant consent is withdrawn.</p>
+      </div>
     </div>
   );
 }

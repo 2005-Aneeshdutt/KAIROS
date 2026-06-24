@@ -299,6 +299,10 @@ function RctValidation({ v }: { v: any }) {
         Conversion when contacted vs. a held-out control group, straight from the experiment — no assumptions.
         The four buckets aren&apos;t a story; they&apos;re visible in the raw treated-minus-control lift.
       </p>
+      <div className="text-[11px] text-emerald-300/90 bg-emerald-500/5 border border-emerald-500/20 rounded-lg px-3 py-2 mb-3">
+        🧪 <b>Always-on holdout:</b> that control group isn&apos;t a one-off — in production a small slice of every
+        segment stays held out, so Kairos keeps <b>measuring true incremental lift</b> and never drifts into vanity metrics.
+      </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
         {v.buckets.map((b: any) => (

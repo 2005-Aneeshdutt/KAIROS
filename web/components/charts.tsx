@@ -1,13 +1,57 @@
 "use client";
 
 import {
-  Area, AreaChart, CartesianGrid, Line, LineChart, ReferenceDot, ReferenceLine,
+  Area, AreaChart, Bar, BarChart, CartesianGrid, Line, LineChart, ReferenceDot, ReferenceLine,
   ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis, ZAxis, Cell,
 } from "recharts";
 import { BUCKET_COLOR } from "@/lib/api";
 
 const axis = { stroke: "#5b6680", fontSize: 11 };
 const grid = "#1d2638";
+
+export function UpliftHistogram({ bins }: { bins: { pct: number; count: number }[] }) {
+  return (
+    <ResponsiveContainer width="100%" height={220}>
+      <BarChart data={bins} margin={{ top: 8, right: 10, left: -12, bottom: 0 }}>
+        <CartesianGrid stroke={grid} vertical={false} />
+        <XAxis dataKey="pct" tickFormatter={(v) => `${v}%`} {...axis} interval={4} />
+        <YAxis {...axis} />
+        <Tooltip contentStyle={tip} formatter={(v: number) => [v.toLocaleString(), "customers"]}
+          labelFormatter={(v) => `uplift ${v}%`} cursor={{ fill: "rgba(255,255,255,0.04)" }} />
+        <Bar dataKey="count" radius={[2, 2, 0, 0]}>
+          {bins.map((b, i) => <Cell key={i} fill={b.pct < 0 ? "#ef4444" : b.pct >= 12 ? "#3b82f6" : "#64748b"} />)}
+        </Bar>
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
+
+export function RestraintWaterfall({ m }: { m: { revenue_generated?: number; budget_saved?: number; revenue_protected?: number } }) {
+  const rg = m.revenue_generated ?? 0;
+  const bs = m.budget_saved ?? 0;
+  const rp = m.revenue_protected ?? 0;
+  const bars = [
+    { name: "Generated", base: 0, value: rg, color: "#3b82f6" },
+    { name: "Budget saved", base: rg, value: bs, color: "#22c55e" },
+    { name: "Protected", base: rg + bs, value: rp, color: "#eab308" },
+    { name: "Total impact", base: 0, value: rg + bs + rp, color: "#e6005a" },
+  ];
+  return (
+    <ResponsiveContainer width="100%" height={240}>
+      <BarChart data={bars} margin={{ top: 16, right: 10, left: -4, bottom: 0 }}>
+        <CartesianGrid stroke={grid} vertical={false} />
+        <XAxis dataKey="name" {...axis} interval={0} />
+        <YAxis tickFormatter={(v) => `$${Math.round(v / 1000)}k`} {...axis} />
+        <Tooltip contentStyle={tip} cursor={{ fill: "rgba(255,255,255,0.04)" }}
+          formatter={(v: number, n) => (n === "value" ? [`$${Math.round(v).toLocaleString()}`, "amount"] : [null, ""])} />
+        <Bar dataKey="base" stackId="a" fill="transparent" />
+        <Bar dataKey="value" stackId="a" radius={[4, 4, 0, 0]}>
+          {bars.map((b, i) => <Cell key={i} fill={b.color} />)}
+        </Bar>
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
 
 export function QiniChart({ data }: { data: { x: number[]; y: number[]; auuc: number } }) {
   const pts = (data.x || []).map((x, i) => ({ x, model: data.y[i], random: x }));

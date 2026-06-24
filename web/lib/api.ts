@@ -59,6 +59,7 @@ export const api = {
       { total: 0, items: [] }
     ),
   qini: () => get<any>("/qini", { x: [], y: [], auuc: 0, method: "" }),
+  upliftHistogram: () => get<{ bins: { pct: number; count: number }[] }>("/uplift-histogram", { bins: [] }),
   allocation: () => get<any>("/allocation", { curve: [], knee: {}, restraint_metrics: {}, economics: {} }),
   allocate: (budget: number) =>
     post<{ budget: number; revenue: number; customers_targeted: number }>(
@@ -129,6 +130,7 @@ export const store = {
   identitySummary: () => get<any>("/analytics/identity", null),
   report: () => get<any>("/report", null),
   customerStrategy: (coreId: string) => get<any>(`/customer/${encodeURIComponent(coreId)}/strategy`, null),
+  customerDrivers: (coreId: string) => get<any>(`/customer/${encodeURIComponent(coreId)}/drivers`, null),
   sendMail: (coreId: string, device = "desktop") =>
     post<any>(`/customer/${encodeURIComponent(coreId)}/send-mail`, { device }, { ok: false }),
   chat: (uid: string, message: string) =>
