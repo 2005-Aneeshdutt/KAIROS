@@ -206,6 +206,7 @@ def rct_validation() -> dict:
         },
     }
 
+@lru_cache(maxsize=16)
 def benchmark(n: int = 5000, seed: int = 42) -> dict:
     seed = abs(int(seed)) % (2 ** 32)        # pandas/numpy random_state must be non-negative
     n = max(1, min(int(n), 64000))

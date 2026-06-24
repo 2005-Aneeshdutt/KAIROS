@@ -833,43 +833,37 @@ def seed_demo(reset: bool = True) -> dict:
         for t, pid, dev in steps:
             STORE.track(uid, {"type": t, "product_id": pid, "device": dev, "dwell_ms": 4000})
 
-    u = login("aarav@demo.com", "Aarav Shah")["core_id"]
-    jrny(u, [("view_product", "p9", "desktop"), ("view_detail", "p9", "desktop"),
-             ("view_all_reviews", "p9", "desktop"), ("view_product", "p9", "desktop"),
-             ("add_to_wishlist", "p9", "desktop"), ("add_to_cart", "p9", "desktop"),
-             ("view_product", "p12", "desktop")])
-
-    u = login("diya@demo.com", "Diya Menon")["core_id"]
-    jrny(u, [("view_product", "p13", "desktop"), ("add_to_cart", "p13", "desktop")])
-    STORE.purchase(u)
-
-    u = login("kabir@demo.com", "Kabir Rao")["core_id"]
-    jrny(u, [("view_product", f"p{i}", "desktop") for i in range(1, 12)])
-
-    u = login("isha@demo.com", "Isha Nair")["core_id"]
-    jrny(u, [("view_product", "p20", "desktop")])
-
-    # cross-device identity merge (guest desktop -> leave -> mobile -> sign in)
+    # 1) ANEESH — Persuadable hero + cross-device identity merge. Browses as a guest on
+    #    desktop, leaves, returns on mobile, then signs in → his anonymous trail stitches in.
     g = "seedguest_" + hashlib.md5(str(time.time()).encode()).hexdigest()[:6]
-    jrny(g, [("view_product", "p7", "desktop"), ("view_detail", "p7", "desktop"),
-             ("add_to_cart", "p7", "desktop")])
+    jrny(g, [("view_product", "p9", "desktop"), ("view_detail", "p9", "desktop"),
+             ("view_all_reviews", "p9", "desktop"), ("view_product", "p9", "desktop"),
+             ("add_to_wishlist", "p9", "desktop")])
     STORE.end_session(g, "desktop")
-    jrny(g, [("view_product", "p10", "mobile"), ("view_reviews", "p10", "mobile")])
-    login("rohan@demo.com", "Rohan Gupta", guest_uid=g)
+    jrny(g, [("view_product", "p9", "mobile"), ("view_reviews", "p9", "mobile"),
+             ("add_to_cart", "p9", "mobile"), ("view_product", "p12", "mobile")])
+    login("aneesh@kairos.demo", "Aneesh", guest_uid=g)
 
-    u = login("ananya@demo.com", "Ananya Iyer")["core_id"]
-    jrny(u, [("view_product", "p19", "desktop"), ("add_to_cart", "p19", "desktop")])
+    # 2) DISHAN — Sure Thing: decisive, buys fast, returns and buys again (revenue + HOLD story)
+    u = login("dishan@kairos.demo", "Dishan")["core_id"]
+    jrny(u, [("view_product", "p13", "desktop"), ("add_to_cart", "p13", "desktop")])
     STORE.purchase(u)
     jrny(u, [("view_product", "p17", "mobile"), ("add_to_cart", "p17", "mobile")])
     STORE.purchase(u)
 
-    u = login("vihaan@demo.com", "Vihaan Reddy")["core_id"]
+    # 3) NAGARJUN — Sleeping Dog / over-browser: views everything, never carts (SUPPRESS)
+    u = login("nagarjun@kairos.demo", "Nagarjun")["core_id"]
+    jrny(u, [("view_product", f"p{i}", "desktop") for i in range(1, 12)])
+
+    # 4) RAJEEV — Persuadable bundle-builder across categories (cart held, not bought)
+    u = login("rajeev@kairos.demo", "Rajeev")["core_id"]
     jrny(u, [("view_product", "p1", "desktop"), ("add_to_wishlist", "p1", "desktop"),
              ("view_product", "p11", "desktop"), ("add_to_cart", "p11", "desktop"),
-             ("view_product", "p14", "desktop")])
+             ("view_detail", "p11", "desktop"), ("view_product", "p14", "desktop")])
 
-    u = login("sara@demo.com", "Sara Khan")["core_id"]
-    jrny(u, [("view_product", "p3", "desktop")])
+    # 5) NIHAL — light browser (Lost Cause) who opted OUT of personalisation (privacy story)
+    u = login("nihal@kairos.demo", "Nihal")["core_id"]
+    jrny(u, [("view_product", "p20", "desktop"), ("view_product", "p3", "desktop")])
     set_consent(u, False)
 
     return {"ok": True, "people": len(USERS), **identity_summary()}
@@ -1412,28 +1406,30 @@ def detect_bundle(v: Visitor) -> dict | None:
     }
 
 def session_economics(v: Visitor) -> dict:
-    n = len(v.events)
     p = profile(v)
     seg = p["segment"]
     nba = next_best_action(v, v.devices[-1] if v.devices else "desktop")
-    patterns = {pat["code"] for pat in detect_patterns(v)}
 
-    # Traditional batch-and-blast: always sends 2-3 paid touches regardless of fit,
-    # and discounts anyone in the top half by propensity.
-    trad_msgs = 2 + n // 5
-    trad_incentive = AOV * DISCOUNT if seg in ("Sure Thing", "Persuadable") else 0.0
-    trad_budget = round(trad_msgs * 0.12 + trad_incentive, 2)
-    trad_annoy = min(95, trad_msgs * 12)
+    cart_adds = sum(1 for e in v.events if e.get("type") == "add_to_cart")
+    browsed = any(e.get("type") in ("view_product", "view_detail", "view_category",
+                                    "view_reviews", "view_all_reviews") for e in v.events)
 
-    # Kairos: a paid/off-site touch ONLY where it changes the outcome (Persuadables),
-    # plus a cart-recovery touch for them. Sure Things / Sleeping Dogs / Lost Causes get
-    # zero paid messages (a free in-app reward or deliberate silence) — that's the restraint.
-    persuadable = seg == "Persuadable"
-    cond_msgs = (1 + (1 if "cart_abandon" in patterns else 0)) if persuadable else 0
-    gives_discount = persuadable and "discount" in str(nba.get("reward_type", ""))
+    # Kairos: count ONLY what it actually decided to send — the messages in the inbox.
+    # Zero until a touch is genuinely warranted, so a fresh login reads 0 and matches the
+    # customer's (empty) inbox exactly — no phantom "sent" count.
+    cond_msgs = len(v.inbox)
+    gives_discount = seg == "Persuadable" and "discount" in str(nba.get("reward_type", ""))
     cond_incentive = AOV * 0.15 if gives_discount else 0.0
     cond_budget = round(cond_msgs * 0.04 + cond_incentive, 2)
-    cond_annoy = min(20, cond_msgs * 4)
+    cond_annoy = min(20, cond_msgs * 5)
+
+    # Traditional batch-and-blast: a touch on entry + a nudge for every cart action + a
+    # post-purchase blast — everything Kairos sent PLUS the touches it chose to withhold.
+    # Always >= Kairos, so the gap (saved) is the restraint, and it's 0 before any activity.
+    trad_msgs = max(cond_msgs, (1 if browsed else 0) + cart_adds + (1 if v.orders else 0))
+    trad_incentive = AOV * DISCOUNT if (browsed and seg in ("Sure Thing", "Persuadable")) else 0.0
+    trad_budget = round(trad_msgs * 0.12 + trad_incentive, 2)
+    trad_annoy = min(95, trad_msgs * 18)
 
     return {
         "segment": seg,
@@ -1446,6 +1442,57 @@ def session_economics(v: Visitor) -> dict:
         },
         "basis": "projected per-shopper economics",
     }
+
+def _send_inbox(v: Visitor, channel: str, subject: str, preview: str, body: str,
+                reason: str, icon: str = "📧") -> None:
+    v.inbox.append({"channel": channel, "channel_icon": icon, "subject": subject,
+                    "preview": preview, "body": body, "cta": "Shop now →", "link": "/store",
+                    "product": None, "reward_type": None, "offer_pct": None, "reason": reason,
+                    "from": "VERVE · The Style Edit", "ts": time.time(), "read": False})
+    del v.inbox[:-12]
+    STORE._persist(v)
+
+def implement_play(code: str) -> dict:
+    """Actually EXECUTE a recommended play — send the real messages / apply the policy — so
+    the strategist's 'Implement' button does something, not just advises. Message-sending
+    plays land in the customer's inbox (and show up as real Kairos sends in the economics)."""
+    shoppers = [v for v in STORE._v.values() if v.events]
+    sent = 0
+    if code == "recover_carts":
+        recovered = 0.0
+        for v in shoppers:
+            if v.cart and not v.orders:
+                _send_inbox(v, "In-App", "Still thinking it over?",
+                            "Your bag is waiting — a small nudge while you're here.",
+                            "We saved your items. Complete checkout while they're in stock.",
+                            "cart-recovery — incremental for this shopper", "📲")
+                sent += 1
+                recovered += sum(enrich(PRODUCT_BY_ID[c])["sale_price"] for c in v.cart if c in PRODUCT_BY_ID)
+        return {"ok": True, "code": code, "action": "Cart-recovery nudges sent",
+                "count": sent, "detail": f"{sent} live cart(s) nudged · ${recovered:,.0f} back in play"}
+    if code == "target_persuadables":
+        for v in shoppers:
+            if profile(v)["segment"] == "Persuadable":
+                _send_inbox(v, "Email", "Picked for you",
+                            "A right-sized offer on what you've been eyeing.",
+                            "Because it actually changes your decision — here's our best offer.",
+                            "Persuadable — spend is incremental here")
+                sent += 1
+        return {"ok": True, "code": code, "action": "Targeted offers sent to Persuadables",
+                "count": sent, "detail": f"{sent} Persuadable(s) contacted on their best channel"}
+    if code == "hold_sure_things":
+        n = sum(1 for v in shoppers if profile(v)["segment"] == "Sure Thing")
+        return {"ok": True, "code": code, "action": "Discounts swapped for 2× points",
+                "count": n, "detail": f"{n} Sure Thing(s) moved to loyalty — margin kept, no blast"}
+    if code == "suppress_dogs":
+        n = sum(1 for v in shoppers if profile(v)["segment"] == "Sleeping Dog")
+        return {"ok": True, "code": code, "action": "Sleeping Dogs suppressed",
+                "count": n, "detail": f"{n} negative-uplift shopper(s) excluded from outbound"}
+    if code == "right_size_discount":
+        n = sum(1 for v in shoppers if profile(v)["segment"] == "Persuadable")
+        return {"ok": True, "code": code, "action": "Minimum Effective Dose applied",
+                "count": n, "detail": f"{n} Persuadable(s) set to their smallest converting dose"}
+    return {"ok": False, "code": code, "action": "Unknown play", "count": 0, "detail": "No such play"}
 
 def session_end_mail(v: Visitor, device: str) -> dict | None:
     p = profile(v)
@@ -1513,8 +1560,10 @@ def deliver_to_inbox(v: Visitor, device: str) -> list[dict]:
 
 def cohort_analytics() -> dict:
     shoppers = list(STORE._v.values())
-    visitors = len(shoppers)
-    browsed = sum(1 for v in shoppers if v.events)
+    # Only count people who actually entered the funnel — not empty/phantom records left by
+    # a bare login or an abandoned guest id. visitors >= browsed >= carted >= bought always.
+    visitors = sum(1 for v in shoppers if v.events or v.orders)
+    browsed = sum(1 for v in shoppers if any(e.get("type") in ("view_product", "view_detail") for e in v.events))
     carted = sum(1 for v in shoppers if v.cart or any(e.get("type") == "add_to_cart" for e in v.events))
     bought = sum(1 for v in shoppers if v.orders)
 
@@ -1620,23 +1669,23 @@ def strategy_report() -> dict:
 
     recs = []
     if funnel["carted"] and co["revenue_at_risk"] > 0:
-        recs.append({"priority": "High", "title": "Recover abandoned carts the moment shoppers leave",
+        recs.append({"code": "recover_carts", "priority": "High", "title": "Recover abandoned carts the moment shoppers leave",
                      "detail": f"${co['revenue_at_risk']:.0f} sits in abandoned bags. Fire an In-App nudge while they're live, then one Push/Wallet-Pass touch at session end — not a blast.",
                      "impact": f"${co['revenue_at_risk']:.0f} recoverable"})
     if sure_n:
-        recs.append({"priority": "High", "title": "Stop discounting Sure Things",
+        recs.append({"code": "hold_sure_things", "priority": "High", "title": "Stop discounting Sure Things",
                      "detail": f"{sure_n} shopper(s) would buy anyway. Swap their coupon for 2× points and you keep the margin.",
                      "impact": f"~${est_discount_waste:.0f} margin protected"})
     if pers_n:
-        recs.append({"priority": "Medium", "title": "Concentrate budget on Persuadables",
+        recs.append({"code": "target_persuadables", "priority": "Medium", "title": "Concentrate budget on Persuadables",
                      "detail": f"{pers_n} shopper(s) are genuinely movable. Deep-link, real offer, best channel — this is where spend is incremental.",
                      "impact": "highest ROI per $"})
     if depths:
-        recs.append({"priority": "High", "title": "Right-size the discount (Minimum Effective Dose)",
+        recs.append({"code": "right_size_discount", "priority": "High", "title": "Right-size the discount (Minimum Effective Dose)",
                      "detail": f"Avg effective discount is {avg_depth}% — not a reflexive 20%. Give each Persuadable the smallest dose that still converts instead of blanket promos.",
                      "impact": f"~${med_margin:.0f} margin right-sized"})
     if dog_n:
-        recs.append({"priority": "Medium", "title": "Suppress Sleeping Dogs",
+        recs.append({"code": "suppress_dogs", "priority": "Medium", "title": "Suppress Sleeping Dogs",
                      "detail": f"{dog_n} shopper(s) convert LESS when contacted. Leaving them alone protects organic revenue.",
                      "impact": f"~${protected:.0f} revenue protected"})
 

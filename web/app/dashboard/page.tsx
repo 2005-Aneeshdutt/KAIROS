@@ -118,7 +118,7 @@ export default function Page() {
             <div>
               <div className="text-[10px] uppercase tracking-widest text-slate-500 mb-1.5">Funnel</div>
               <div className="flex items-center gap-2 text-sm">
-                {[["Visitors", liveAnalytics.funnel.visitors], ["Browsed", liveAnalytics.funnel.browsed], ["Carted", liveAnalytics.funnel.carted], ["Bought", liveAnalytics.funnel.bought]].map(([k, v], i, arr) => (
+                {[["Overall visitors", liveAnalytics.funnel.visitors], ["Browsed", liveAnalytics.funnel.browsed], ["Carted", liveAnalytics.funnel.carted], ["Bought", liveAnalytics.funnel.bought]].map(([k, v], i, arr) => (
                   <div key={k as string} className="flex items-center gap-2">
                     <div className="bg-panel2 border border-line rounded-lg px-3 py-1.5 text-center">
                       <div className="font-bold tabular-nums">{v as any}</div>

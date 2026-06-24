@@ -60,6 +60,15 @@ export default function StrategyPage() {
   const [alloc, setAlloc] = useState<any>(null);
   const [benchLoading, setBenchLoading] = useState(false);
   const [dl, setDl] = useState(false);
+  const [impl, setImpl] = useState<Record<string, any>>({});
+  const [busy, setBusy] = useState<string>("");
+
+  async function doImplement(code: string) {
+    setBusy(code);
+    const r = await store.implement(code);
+    setBusy("");
+    if (r?.ok) setImpl((m) => ({ ...m, [code]: r }));
+  }
 
   async function downloadReport() {
     setDl(true);
@@ -132,7 +141,7 @@ export default function StrategyPage() {
 
       {/* Headline stats */}
       <section className="grid grid-cols-2 md:grid-cols-6 gap-3 mb-6">
-        <Stat label="Visitors" value={`${h.visitors ?? 0}`} />
+        <Stat label="Overall visitors" value={`${h.visitors ?? 0}`} />
         <Stat label="Buyers" value={`${h.buyers ?? 0}`} accent="text-persuadable" />
         <Stat label="Conversion" value={`${h.conversion_pct ?? 0}%`} />
         <Stat label="Revenue" value={fmtUSD(h.revenue ?? 0)} accent="text-sure" live />
@@ -180,7 +189,15 @@ export default function StrategyPage() {
                     <span className={`pill text-[10px] ${PRIORITY[r.priority] ?? PRIORITY.Low}`}>{r.priority}</span>
                   </div>
                   <p className="text-xs text-slate-400 mt-1">{r.detail}</p>
-                  <div className="text-[11px] text-epsilon font-semibold mt-1.5">→ {r.impact}</div>
+                  <div className="flex items-center justify-between gap-2 mt-2">
+                    <div className="text-[11px] text-epsilon font-semibold">→ {r.impact}</div>
+                    {r.code && (impl[r.code]
+                      ? <span className="text-[11px] text-emerald-400 font-semibold whitespace-nowrap">✓ {impl[r.code].action} · {impl[r.code].detail}</span>
+                      : <button onClick={() => doImplement(r.code)} disabled={busy === r.code}
+                          className="text-[11px] font-semibold px-2.5 py-1 rounded-md bg-epsilon/20 text-epsilon hover:bg-epsilon/30 disabled:opacity-50 whitespace-nowrap">
+                          {busy === r.code ? "Implementing…" : "⚡ Implement"}
+                        </button>)}
+                  </div>
                 </div>
               ))}
             </div>

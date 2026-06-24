@@ -129,6 +129,7 @@ export const store = {
   identity: (coreId: string) => get<any>(`/identity/${encodeURIComponent(coreId)}`, null),
   identitySummary: () => get<any>("/analytics/identity", null),
   report: () => get<any>("/report", null),
+  implement: (code: string) => post<any>("/strategy/implement", { code }, { ok: false }),
   customerStrategy: (coreId: string) => get<any>(`/customer/${encodeURIComponent(coreId)}/strategy`, null),
   customerDrivers: (coreId: string) => get<any>(`/customer/${encodeURIComponent(coreId)}/drivers`, null),
   sendMail: (coreId: string, device = "desktop") =>

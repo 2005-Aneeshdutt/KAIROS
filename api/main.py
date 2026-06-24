@@ -24,6 +24,17 @@ app.add_middleware(
     CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],
 )
 
+@app.on_event("startup")
+def _warm_caches():
+    # Warm the heavy benchmark in a thread so the first AI-Strategist call isn't slow.
+    import threading
+    def _warm():
+        try:
+            sim.benchmark(n=64000, seed=42)
+        except Exception:
+            pass
+    threading.Thread(target=_warm, daemon=True).start()
+
 BUCKET_ACTION = {
     "Persuadable": ("TARGET", "High incremental lift — spend here."),
     "Sure Thing": ("HOLD", "Buys anyway — marketing is wasted spend."),
@@ -206,6 +217,14 @@ def admin_seed(reset: bool = True):
     """Populate the demo with realistic people, a cross-device merge, and revenue —
     so a freshly deployed instance isn't empty. Hit this once after deploy."""
     return trk.seed_demo(reset)
+
+class ImplementReq(BaseModel):
+    code: str
+
+@app.post("/strategy/implement")
+def strategy_implement(req: ImplementReq):
+    """Actually execute a recommended play (send the messages / apply the policy)."""
+    return trk.implement_play(req.code)
 
 class ConsentReq(BaseModel):
     uid: str
