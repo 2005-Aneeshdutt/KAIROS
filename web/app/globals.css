@@ -59,6 +59,32 @@ body {
   fill: rgba(255, 255, 255, 0.05);
 }
 
+/* ---- Light mode (toggle adds .light on <html>) ---- */
+html.light { color-scheme: light; }
+html.light body {
+  background:
+    radial-gradient(900px 520px at 10% -12%, rgba(230, 0, 90, 0.07), transparent 60%),
+    radial-gradient(1000px 600px at 92% -6%, rgba(59, 130, 246, 0.06), transparent 55%),
+    #eef1f6;
+  color: #0f172a;
+}
+html.light .card {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.72));
+  border-color: rgba(15, 23, 42, 0.08);
+  box-shadow: 0 8px 28px rgba(15, 23, 42, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+html.light .card:hover { border-color: rgba(15, 23, 42, 0.18); }
+html.light .glass { background: rgba(255, 255, 255, 0.82); border-color: rgba(15, 23, 42, 0.08); }
+html.light .bg-ink, html.light .bg-panel { background-color: #ffffff !important; }
+html.light .bg-panel2 { background-color: #eef1f6 !important; }
+html.light .border-line { border-color: #e2e8f0 !important; }
+html.light .text-slate-100, html.light .text-slate-200, html.light .text-slate-300 { color: #1e293b !important; }
+html.light .text-slate-400 { color: #475569 !important; }
+html.light .text-slate-500, html.light .text-slate-600 { color: #64748b !important; }
+html.light .recharts-default-tooltip { background: rgba(255, 255, 255, 0.96) !important; border-color: rgba(15, 23, 42, 0.12) !important; color: #0f172a !important; }
+html.light .recharts-tooltip-cursor { fill: rgba(15, 23, 42, 0.05); }
+html.light *::-webkit-scrollbar-thumb { background: rgba(15, 23, 42, 0.18); }
+
 /* Thin, modern scrollbars */
 *::-webkit-scrollbar { width: 8px; height: 8px; }
 *::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.12); border-radius: 8px; }

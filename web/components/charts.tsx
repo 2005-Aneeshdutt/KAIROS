@@ -18,7 +18,7 @@ export function UpliftHistogram({ bins }: { bins: { pct: number; count: number }
         <YAxis {...axis} />
         <Tooltip contentStyle={tip} formatter={(v: number) => [v.toLocaleString(), "customers"]}
           labelFormatter={(v) => `uplift ${v}%`} cursor={{ fill: "rgba(255,255,255,0.04)" }} />
-        <Bar dataKey="count" radius={[2, 2, 0, 0]}>
+        <Bar dataKey="count" radius={[2, 2, 0, 0]} isAnimationActive animationDuration={900} animationEasing="ease-out">
           {bins.map((b, i) => <Cell key={i} fill={b.pct < 0 ? "#ef4444" : b.pct >= 12 ? "#3b82f6" : "#64748b"} />)}
         </Bar>
       </BarChart>
@@ -45,7 +45,7 @@ export function RestraintWaterfall({ m }: { m: { revenue_generated?: number; bud
         <Tooltip contentStyle={tip} cursor={{ fill: "rgba(255,255,255,0.04)" }}
           formatter={(v: number, n) => (n === "value" ? [`$${Math.round(v).toLocaleString()}`, "amount"] : [null, ""])} />
         <Bar dataKey="base" stackId="a" fill="transparent" />
-        <Bar dataKey="value" stackId="a" radius={[4, 4, 0, 0]}>
+        <Bar dataKey="value" stackId="a" radius={[4, 4, 0, 0]} isAnimationActive animationDuration={1100} animationEasing="ease-out">
           {bars.map((b, i) => <Cell key={i} fill={b.color} />)}
         </Bar>
       </BarChart>
@@ -68,8 +68,8 @@ export function QiniChart({ data }: { data: { x: number[]; y: number[]; auuc: nu
         <XAxis dataKey="x" tickFormatter={(v) => `${Math.round(v * 100)}%`} {...axis} />
         <YAxis {...axis} />
         <Tooltip contentStyle={tip} formatter={(v: number) => v.toFixed(3)} />
-        <Area type="monotone" dataKey="model" stroke="#e6005a" strokeWidth={2} fill="url(#qini)" name="Kairos" />
-        <Line type="monotone" dataKey="random" stroke="#5b6680" strokeDasharray="4 4" dot={false} name="Random" />
+        <Area type="monotone" dataKey="model" stroke="#e6005a" strokeWidth={2} fill="url(#qini)" name="Kairos" isAnimationActive animationDuration={1500} animationEasing="ease-out" />
+        <Line type="monotone" dataKey="random" stroke="#5b6680" strokeDasharray="4 4" dot={false} name="Random" isAnimationActive animationDuration={1500} animationEasing="ease-out" />
       </AreaChart>
     </ResponsiveContainer>
   );
@@ -93,7 +93,7 @@ export function MarginalRoiChart({
         <Tooltip contentStyle={tip}
           formatter={(v: number, n) => [n === "revenue" ? `$${Math.round(v).toLocaleString()}` : v, n]}
           labelFormatter={(v) => `Budget $${Math.round(Number(v)).toLocaleString()}`} />
-        <Area type="monotone" dataKey="revenue" stroke="#3b82f6" strokeWidth={2} fill="url(#roi)" />
+        <Area type="monotone" dataKey="revenue" stroke="#3b82f6" strokeWidth={2} fill="url(#roi)" isAnimationActive animationDuration={1500} animationEasing="ease-out" />
         {knee?.budget != null && (
           <ReferenceDot x={knee.budget} y={knee.revenue} r={5} fill="#22c55e" stroke="#fff"
             label={{ value: "knee — stop here", position: "top", fill: "#22c55e", fontSize: 11 }} />
@@ -112,9 +112,9 @@ export function BanditChart({ curve }: { curve: any[] }) {
         <XAxis dataKey="round" {...axis} />
         <YAxis {...axis} />
         <Tooltip contentStyle={tip} />
-        <Line type="monotone" dataKey="oracle" stroke="#5b6680" strokeDasharray="4 4" dot={false} name="Oracle (ceiling)" />
-        <Line type="monotone" dataKey="thompson" stroke="#e6005a" strokeWidth={2} dot={false} name="Kairos (learning)" />
-        <Line type="monotone" dataKey="random" stroke="#64748b" strokeWidth={1.5} dot={false} name="Random" />
+        <Line type="monotone" dataKey="oracle" stroke="#5b6680" strokeDasharray="4 4" dot={false} name="Oracle (ceiling)" isAnimationActive animationDuration={1600} animationEasing="ease-out" />
+        <Line type="monotone" dataKey="thompson" stroke="#e6005a" strokeWidth={2} dot={false} name="Kairos (learning)" isAnimationActive animationBegin={250} animationDuration={1700} animationEasing="ease-out" />
+        <Line type="monotone" dataKey="random" stroke="#64748b" strokeWidth={1.5} dot={false} name="Random" isAnimationActive animationBegin={500} animationDuration={1600} animationEasing="ease-out" />
       </LineChart>
     </ResponsiveContainer>
   );
@@ -135,7 +135,7 @@ export function SegmentScatter({ points, live = [], onPick }: { points: any[]; l
         <ReferenceLine y={0} stroke="#5b6680" strokeOpacity={0.5} />
         <Tooltip contentStyle={tip} cursor={{ strokeDasharray: "3 3" }}
           formatter={(v: number, n) => [typeof v === "number" ? v.toFixed(3) : v, n]} />
-        <Scatter data={points} onClick={(e: any) => e?.customer_id && onPick(e.customer_id)}>
+        <Scatter data={points} onClick={(e: any) => e?.customer_id && onPick(e.customer_id)} isAnimationActive animationDuration={800} animationEasing="ease-out">
           {points.map((p, i) => (
             <Cell key={i} fill={BUCKET_COLOR[p.bucket] || "#64748b"} fillOpacity={0.7} />
           ))}

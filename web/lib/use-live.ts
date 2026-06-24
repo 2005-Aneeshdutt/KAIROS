@@ -25,6 +25,12 @@ export function useLiveData<T>(path: string, onData: (d: T) => void, pollMs = 25
       poll = setInterval(f, pollMs);
     };
 
+    // Paint immediately — don't wait for the first SSE push (kills perceived latency).
+    fetch(`/api${path}`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d && !stopped && !got) onData(d as T); })
+      .catch(() => {});
+
     try {
       es = new EventSource(`/api${path}/stream`);
       es.onmessage = (e) => {

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 // Framed as Epsilon PeopleCloud: Audiences → Activation → Measurement.
 const NAV = [
@@ -22,6 +23,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
             <div className="font-black text-lg tracking-tight">Kairos</div>
             <div className="text-[9px] text-slate-500 -mt-0.5">PeopleCloud</div>
           </div>
+          <ThemeToggle className="ml-auto" />
         </div>
         <div className="px-4 pt-3 text-[9px] uppercase tracking-widest text-slate-600">Audiences → Activation → Measurement</div>
         <nav className="flex-1 p-3 space-y-1">
