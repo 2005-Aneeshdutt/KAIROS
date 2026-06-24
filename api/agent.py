@@ -97,39 +97,55 @@ def run(goal: str, executors: dict, max_steps: int = 6) -> dict:
     return _local(goal, executors)
 
 
+def _gather(goal, executors):
+    """Perceive: pick and call the relevant tools in ONE fast pass (server-side, cached),
+    so the LLM can reason in a single round-trip instead of a slow multi-step tool loop."""
+    g = goal.lower()
+    steps, ctx = [], {}
+
+    def call(name, **kw):
+        steps.append({"tool": name, "input": kw})
+        try:
+            return executors[name](**kw)
+        except Exception as e:
+            return {"error": str(e)}
+
+    wants_who = any(k in g for k in ["who is", "who's", "whos", "looking at", "viewing",
+                                     "anyone", "on the site", "online"])
+    if wants_who and "get_live_shoppers" in executors:
+        ctx["live_shoppers"] = call("get_live_shoppers")
+        return steps, ctx                       # a "who's online" question only needs this
+
+    ctx["segments"] = call("get_segments")      # always ground in the base
+    b = _budget(goal)
+    if b and any(k in g for k in ["budget", "spend", "allocate", "$"]):
+        ctx["allocation"] = call("solve_allocation", budget=b)
+    if any(k in g for k in ["benchmark", "traditional", "compare", " vs", "case for",
+                            "better", "roi", "beat", "bleed", "waste"]):
+        ctx["benchmark"] = call("run_benchmark")
+    if any(k in g for k in ["live", "now", "store", "shopper", "funnel", "abandon", "losing"]):
+        ctx["strategy"] = call("get_strategy")
+    return steps, ctx
+
+
 def _openrouter(goal, executors, key, base, model, max_steps):
     try:
         from openai import OpenAI
-        client = OpenAI(base_url=base, api_key=key,
+        client = OpenAI(base_url=base, api_key=key, timeout=22,
                         default_headers={"HTTP-Referer": "https://kairos.app", "X-Title": "Kairos"})
-        messages = [{"role": "system", "content": SYSTEM}, {"role": "user", "content": goal}]
-        tools = _oai_tools()
-        steps = []
-        for _ in range(max_steps):
-            resp = client.chat.completions.create(
-                model=model, messages=messages, tools=tools, tool_choice="auto", max_tokens=1024)
-            msg = resp.choices[0].message
-            calls = msg.tool_calls or []
-            if not calls:
-                return {"answer": msg.content or "", "steps": steps,
-                        "source": "openrouter", "model": model}
-            messages.append({
-                "role": "assistant",
-                "content": msg.content or "",
-                "tool_calls": [{"id": c.id, "type": "function",
-                                "function": {"name": c.function.name,
-                                             "arguments": c.function.arguments}} for c in calls],
-            })
-            for c in calls:
-                try:
-                    args = json.loads(c.function.arguments or "{}")
-                except Exception:
-                    args = {}
-                out = _exec(c.function.name, args, executors, steps)
-                messages.append({"role": "tool", "tool_call_id": c.id,
-                                 "content": json.dumps(out, default=str)[:4000]})
-        return {"answer": "(stopped after the step limit)", "steps": steps,
-                "source": "openrouter", "model": model}
+        steps, ctx = _gather(goal, executors)
+        context = json.dumps(ctx, default=str)[:6500]
+        user = (f"GOAL: {goal}\n\nThe system's REAL numbers (already pulled from the platform "
+                f"tools — use these, never invent figures):\n{context}\n\nAnswer the goal concisely, "
+                f"cite the real figures, emphasise incrementality + restraint, and finish with a "
+                f"short prioritised action plan (SPEND / HOLD / SUPPRESS / SKIP).")
+        resp = client.chat.completions.create(
+            model=model, max_tokens=700,
+            messages=[{"role": "system", "content": SYSTEM}, {"role": "user", "content": user}])
+        ans = resp.choices[0].message.content or ""
+        if not ans.strip():
+            return None
+        return {"answer": ans, "steps": steps, "source": "openrouter", "model": model}
     except Exception:
         return None
 
