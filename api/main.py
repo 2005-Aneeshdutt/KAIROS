@@ -105,6 +105,14 @@ def customer(customer_id: str):
 def qini_endpoint():
     return qini()
 
+@app.get("/uplift-histogram")
+def uplift_histogram():
+    u = scores()["uplift"].astype(float).values
+    lo, hi = float(np.quantile(u, 0.01)), float(np.quantile(u, 0.99))
+    counts, edges = np.histogram(u, bins=28, range=(lo, hi))
+    return {"bins": [{"pct": round((edges[i] + edges[i + 1]) / 2 * 100, 1), "count": int(counts[i])}
+                     for i in range(len(counts))]}
+
 @app.get("/allocation")
 def allocation_endpoint():
     return allocation()
@@ -206,6 +214,14 @@ class ConsentReq(BaseModel):
 @app.post("/consent")
 def consent(req: ConsentReq):
     return trk.set_consent(req.uid, req.consent)
+
+@app.get("/customer/{core_id}/drivers")
+def customer_drivers(core_id: str):
+    """Explainable causal decision: the behaviours driving this shopper's uplift."""
+    v = trk.STORE.visitor(core_id)
+    d = trk.decision_drivers(v)
+    d["segment"] = trk.profile(v)["segment"]
+    return d
 
 @app.get("/customer/{core_id}/strategy")
 def customer_strategy(core_id: str):

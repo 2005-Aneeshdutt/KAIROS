@@ -539,7 +539,12 @@ def list_people() -> list[dict]:
 
 def set_consent(uid: str, consent: bool) -> dict:
     v = STORE.visitor(uid)
+    prev = getattr(v, "consent", True)
     v.consent = bool(consent)
+    if bool(consent) != prev:
+        # Auditable consent change — feeds the privacy ledger (Epsilon: privacy-safe identity).
+        v.events.append({"type": "consent", "value": bool(consent),
+                         "ts": time.time(), "points_earned": 0})
     STORE._persist(v)
     return {"uid": uid, "consent": v.consent}
 
@@ -646,6 +651,8 @@ def identity_graph(core_id: str) -> dict:
         "merged_from": merged, "merged_sessions": sum(m.get("sessions", 0) for m in merged),
         "revenue": round(v.total_spent, 2) if v else 0.0,
         "consent": getattr(v, "consent", True) if v else True,
+        "consent_log": [{"ts": e.get("ts", 0), "consent": e.get("value")}
+                        for e in (v.events if v else []) if e.get("type") == "consent"][::-1],
     }
 
 
@@ -935,7 +942,7 @@ def live_shoppers_detail(window: int = 600) -> list[dict]:
         out.append({
             "name": u["name"], "core_id": u["core_id"], "segment": p["segment"],
             "intent_score": p["intent_score"],
-            "looking_at": (p.get("top_product") or {}).get("name"),
+            "looking_at": p.get("looking_at") or (p.get("top_product") or {}).get("name"),
             "recently_viewed": seen,
             "in_cart": [c.get("name") for c in (p.get("cart") or [])],
             "events": len(v.events), "online": (now - last) <= 120,
@@ -982,7 +989,40 @@ def score_visitor(v: Visitor) -> dict | None:
             "bucket": bucket, "inc_value": round(max(uplift, 0) * m["aov"], 2),
             "scored_by": "T-Learner uplift model (9 behavioral features)"}
 
-def product_interests(v: Visitor, top_n: int = 3) -> list[dict]:
+_DRIVER_LABELS = [
+    "product views", "distinct products browsed", "repeat views of one item",
+    "time on site", "wishlist items", "items in cart", "review reads",
+    "prior purchases", "recency",
+]
+
+def decision_drivers(v: Visitor, top: int = 4) -> dict:
+    """Explainable causal decisions: ablation attribution on the live uplift model — how
+    much each behaviour moves THIS shopper's incremental lift. Real model, no rules."""
+    m = _live_model()
+    if not m:
+        return {"available": False, "drivers": [], "uplift_pp": None}
+    model = m["model"]
+    X = visitor_features(v)
+
+    def uplift_of(xrow):
+        base = model.predict_proba(np.column_stack([xrow, [0]]))[0, 1]
+        return float(model.predict_proba(np.column_stack([xrow, [1]]))[0, 1] - base)
+
+    full = uplift_of(X)
+    drivers = []
+    for i in range(X.shape[1] - 1):           # skip recency (constant)
+        if X[0, i] == 0:
+            continue
+        xa = X.copy()
+        xa[0, i] = 0.0
+        contrib = (full - uplift_of(xa)) * 100  # percentage points this behaviour adds
+        if abs(contrib) >= 0.05:
+            drivers.append({"feature": _DRIVER_LABELS[i], "value": round(float(X[0, i]), 1),
+                            "contribution_pp": round(contrib, 2)})
+    drivers.sort(key=lambda d: -abs(d["contribution_pp"]))
+    return {"available": True, "uplift_pp": round(full * 100, 2), "drivers": drivers[:top]}
+
+def product_interests(v: Visitor, top_n: int = 5) -> list[dict]:
     stats: dict[str, dict] = {}
     for e in v.events:
         pid = e.get("product_id")
@@ -1007,7 +1047,9 @@ def product_interests(v: Visitor, top_n: int = 3) -> list[dict]:
                     "bought": is_bought,
                     "intent": _interest_intent(s["views"], s["dwell_ms"] / 1000.0,
                                                s["reviews"], in_cart, in_wish, is_bought)})
-    out.sort(key=lambda x: (-x["intent"], not x["in_cart"], not x["in_wishlist"]))
+    # Lead with ACTIVE intent (not yet bought) so fresh browsing surfaces immediately;
+    # already-bought items still show, but after — they're not "live" intent.
+    out.sort(key=lambda x: (x["bought"], not x["in_cart"], not x["in_wishlist"], -x["intent"]))
     return out[:top_n]
 
 def _interest_intent(views, dwell_s, reviews, in_cart, in_wish, bought) -> int:
@@ -1034,6 +1076,11 @@ def profile(v: Visitor, record: bool = False) -> dict:
     top_pid = (max(active_views, key=active_views.get) if active_views
                else (max(views, key=views.get) if views else None))
     top_views = views.get(top_pid, 0) if top_pid else 0
+    # What they're looking at RIGHT NOW = most recent product view (not most-viewed).
+    recent_pid = next((e.get("product_id") for e in reversed(v.events)
+                       if e.get("type") in ("view_product", "view_detail")
+                       and e.get("product_id") in PRODUCT_BY_ID), None)
+    looking_at_name = (PRODUCT_BY_ID.get(recent_pid) or PRODUCT_BY_ID.get(top_pid) or {}).get("name")
     has_cart = bool(v.cart)
     has_wish = bool(v.wishlist)
     read_reviews = sum(1 for e in v.events if e.get("type") in ("view_reviews", "view_all_reviews"))
@@ -1081,6 +1128,7 @@ def profile(v: Visitor, record: bool = False) -> dict:
         "intent_score": int(score),
         "total_views": total_views,
         "top_product": enrich(PRODUCT_BY_ID[top_pid]) if top_pid else None,
+        "looking_at": looking_at_name,
         "top_views": top_views,
         "interests": product_interests(v),
         "cart": [enrich(PRODUCT_BY_ID[c]) for c in v.cart if c in PRODUCT_BY_ID],
@@ -1101,6 +1149,7 @@ def profile(v: Visitor, record: bool = False) -> dict:
             "uplift": model["uplift"], "inc_value": model["inc_value"],
             "intent_score": int(score), "events": len(v.events),
             "top_product": (PRODUCT_BY_ID.get(top_pid) or {}).get("name"),
+            "looking_at": looking_at_name,
             "devices": list(v.devices), "ts": time.time(),
         }
     return out
@@ -1369,14 +1418,20 @@ def session_economics(v: Visitor) -> dict:
     nba = next_best_action(v, v.devices[-1] if v.devices else "desktop")
     patterns = {pat["code"] for pat in detect_patterns(v)}
 
-    trad_msgs = 1 + n // 3
+    # Traditional batch-and-blast: always sends 2-3 paid touches regardless of fit,
+    # and discounts anyone in the top half by propensity.
+    trad_msgs = 2 + n // 5
     trad_incentive = AOV * DISCOUNT if seg in ("Sure Thing", "Persuadable") else 0.0
     trad_budget = round(trad_msgs * 0.12 + trad_incentive, 2)
-    trad_annoy = min(95, trad_msgs * 9)
+    trad_annoy = min(95, trad_msgs * 12)
 
-    cond_msgs = (1 if nba.get("recommend") else 0) + (1 if "cart_abandon" in patterns else 0)
-    gives_discount = "discount" in str(nba.get("reward_type", ""))
-    cond_incentive = AOV * 0.15 if (gives_discount and seg == "Persuadable") else 0.0
+    # Kairos: a paid/off-site touch ONLY where it changes the outcome (Persuadables),
+    # plus a cart-recovery touch for them. Sure Things / Sleeping Dogs / Lost Causes get
+    # zero paid messages (a free in-app reward or deliberate silence) — that's the restraint.
+    persuadable = seg == "Persuadable"
+    cond_msgs = (1 + (1 if "cart_abandon" in patterns else 0)) if persuadable else 0
+    gives_discount = persuadable and "discount" in str(nba.get("reward_type", ""))
+    cond_incentive = AOV * 0.15 if gives_discount else 0.0
     cond_budget = round(cond_msgs * 0.04 + cond_incentive, 2)
     cond_annoy = min(20, cond_msgs * 4)
 

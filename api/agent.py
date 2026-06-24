@@ -218,6 +218,38 @@ def _local(goal: str, executors: dict) -> dict:
         except Exception as e:
             return {"error": str(e)}
 
+    # Live "who is on the site / who is viewing X now" — answer from real live shoppers,
+    # never the offline 64k base. Return early so we don't dump the generic action plan.
+    wants_who = any(k in g for k in ["who is", "who's", "whos", "who ", "looking at", "viewing",
+                                     "anyone", "on the site", "online"])
+    if wants_who and "get_live_shoppers" in executors:
+        ls = call("get_live_shoppers")
+        shoppers = (ls or {}).get("shoppers") or []
+
+        def _viewed(s):
+            vals = [s.get("looking_at")] + (s.get("recently_viewed") or [])
+            return " ".join(x.lower() for x in vals if x)
+
+        stop = {"looking", "viewing", "customer", "customers", "right", "anyone", "online",
+                "shopper", "shoppers", "product", "store", "site", "there", "currently", "what"}
+        words = [w for w in re.findall(r"[a-z]{4,}", g) if w not in stop]
+        matched = [s for s in shoppers if words and any(w in _viewed(s) for w in words)]
+
+        def _line(s):
+            la = s.get("looking_at") or (s.get("recently_viewed") or ["—"])[0]
+            return f"• {s.get('name') or s.get('core_id')} ({s.get('segment')}) — looking at {la}"
+
+        if matched:
+            ans = f"Yes — {len(matched)} shopper(s) match that right now:\n" + "\n".join(_line(s) for s in matched[:8])
+        elif words and shoppers:
+            ans = (f"No one is looking at that specific item right now, but {len(shoppers)} shopper(s) "
+                   f"are on the site:\n" + "\n".join(_line(s) for s in shoppers[:8]))
+        elif shoppers:
+            ans = f"{len(shoppers)} shopper(s) on the site right now:\n" + "\n".join(_line(s) for s in shoppers[:8])
+        else:
+            ans = "No shoppers are active on the site right now."
+        return {"answer": ans, "steps": steps, "source": "planner"}
+
     seg = call("get_segments")
     by = {s.get("bucket"): s for s in (seg.get("segments") or [])}
     pers, sure = by.get("Persuadable", {}), by.get("Sure Thing", {})
