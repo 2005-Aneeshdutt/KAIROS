@@ -113,18 +113,30 @@ def _gather(goal, executors):
     wants_who = any(k in g for k in ["who is", "who's", "whos", "looking at", "viewing",
                                      "anyone", "on the site", "online"])
     if wants_who and "get_live_shoppers" in executors:
-        ctx["live_shoppers"] = call("get_live_shoppers")
+        ls = call("get_live_shoppers") or {}
+        ctx["live_shoppers"] = [{"name": s.get("name"), "segment": s.get("segment"),
+                                 "looking_at": s.get("looking_at"), "cart": s.get("cart")}
+                                for s in (ls.get("shoppers") or [])[:10]]
         return steps, ctx                       # a "who's online" question only needs this
 
-    ctx["segments"] = call("get_segments")      # always ground in the base
+    seg = call("get_segments") or {}            # always ground in the base (kept compact)
+    ctx["total_customers"] = seg.get("total_customers")
+    ctx["segments"] = [{k: s.get(k) for k in ("bucket", "count", "pct", "avg_uplift", "inc_revenue")}
+                       for s in (seg.get("segments") or [])]
     b = _budget(goal)
     if b and any(k in g for k in ["budget", "spend", "allocate", "$"]):
-        ctx["allocation"] = call("solve_allocation", budget=b)
+        a = call("solve_allocation", budget=b) or {}
+        ctx["allocation"] = {k: a.get(k) for k in ("customers_targeted", "revenue", "past_knee", "knee")}
     if any(k in g for k in ["benchmark", "traditional", "compare", " vs", "case for",
                             "better", "roi", "beat", "bleed", "waste"]):
-        ctx["benchmark"] = call("run_benchmark")
+        bm = call("run_benchmark") or {}
+        ctx["benchmark"] = {"traditional_net": bm.get("traditional", {}).get("net"),
+                            "kairos_net": bm.get("conductor", {}).get("net"), "deltas": bm.get("deltas")}
     if any(k in g for k in ["live", "now", "store", "shopper", "funnel", "abandon", "losing"]):
-        ctx["strategy"] = call("get_strategy")
+        st = call("get_strategy") or {}
+        ctx["strategy"] = {"funnel": st.get("funnel"),
+                           "recommendations": [{"title": r.get("title"), "impact": r.get("impact")}
+                                               for r in (st.get("recommendations") or [])]}
     return steps, ctx
 
 
@@ -140,7 +152,7 @@ def _openrouter(goal, executors, key, base, model, max_steps):
                 f"cite the real figures, emphasise incrementality + restraint, and finish with a "
                 f"short prioritised action plan (SPEND / HOLD / SUPPRESS / SKIP).")
         resp = client.chat.completions.create(
-            model=model, max_tokens=700,
+            model=model, max_tokens=500,
             messages=[{"role": "system", "content": SYSTEM}, {"role": "user", "content": user}])
         ans = resp.choices[0].message.content or ""
         if not ans.strip():
