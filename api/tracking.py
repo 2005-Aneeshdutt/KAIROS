@@ -508,6 +508,7 @@ def login(email: str, name: str = "", guest_uid: str = "") -> dict:
             merge = merge_guest(cid, guest_uid)
         except Exception:
             merge = {"merged": False, "reason": "merge error"}
+    profile(STORE.visitor(cid), record=True)  # surface in the live console immediately (empty logs ok)
     return {**rec, "is_new": is_new, "merge": merge}
 
 
@@ -1100,7 +1101,7 @@ def profile(v: Visitor, record: bool = False) -> dict:
         "Lost Cause": "Low purchase intent",
     }
     if v.events == [] or not v.events:
-        segment, intent = "Unknown", "No signal yet"
+        segment, intent = "New", "Just arrived — no signal yet"
     elif just_converted:
         segment, intent = "Converted", "Purchased"
     elif model:
@@ -1137,7 +1138,9 @@ def profile(v: Visitor, record: bool = False) -> dict:
         "inc_value": model["inc_value"] if model else None,
         "scored_by": model["scored_by"] if model else "heuristic",
     }
-    if record and v.events and model:
+    if record and model:
+        # Register even with 0 events so a freshly signed-in shopper is immediately visible
+        # in the live console (empty logs) instead of disappearing until their first click.
         LIVE_SHOPPERS[v.uid] = {
             "uid": v.uid, "bucket": segment, "base_rate": model["base_rate"],
             "uplift": model["uplift"], "inc_value": model["inc_value"],
