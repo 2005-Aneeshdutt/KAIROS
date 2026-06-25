@@ -35,6 +35,17 @@ def _warm_caches():
             pass
     threading.Thread(target=_warm, daemon=True).start()
 
+    # Auto-seed when the store is empty (e.g. after a free-tier spin-down wiped the
+    # ephemeral DB) so the demo always comes back populated — no manual re-seed needed.
+    def _autoseed():
+        try:
+            if not trk.USERS:
+                trk.seed_demo(reset=False)
+                print(f"[seed] auto-seeded demo ({len(trk.USERS)} people)")
+        except Exception as e:
+            print(f"[seed] auto-seed skipped: {e!r}")
+    threading.Thread(target=_autoseed, daemon=True).start()
+
 BUCKET_ACTION = {
     "Persuadable": ("TARGET", "High incremental lift — spend here."),
     "Sure Thing": ("HOLD", "Buys anyway — marketing is wasted spend."),
